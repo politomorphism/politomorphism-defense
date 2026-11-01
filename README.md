@@ -26,6 +26,10 @@ Average precision 0.527; accuracy 0.665 (not the headline — a trivial always-n
 
 A classification score is **not** a validated measure of "manipulation density," and a detector trained on corpus labels must not be treated as an arbiter of legitimate political opinion. These are limits on what the Politomorphism Engine can claim on this basis; the framework is not validated by this classifier.
 
+### Transformer vs baseline (Working Paper II, v2)
+
+On the same article-disjoint split, a fine-tuned DistilBERT was compared with the baseline, with per-paragraph scores saved. At default thresholds the transformer is more precise (0.578 vs 0.464) and flags fewer paragraphs (249 vs 345), with lower recall (0.545 vs 0.606); the **F1 difference at default thresholds is not significant** (ΔF1 +0.033, 95% CI [−0.03, +0.09]). But on threshold-independent / equal-cost comparisons the transformer is the better detector: average precision higher (ΔAP +0.074 [+0.00, +0.14]); recall at matched review budget higher (0.670 vs 0.606, Δ +0.068 [+0.01, +0.12]); and significantly more correct classifications (McNemar 148 vs 84, p < 0.001). This **reverses** Working Paper I/II v1's "context buys precision, not recall": at equal cost, context buys recall too. Paired transitions show the two models miss *different* cases, not the same ones. All runs are single fixed-seed; magnitudes await multiple seeds.
+
 ## Files
 
 - `01_download_data.py` → `02_inspect_labels.py` → `03_baseline_detector.py` → `04_transformer_detector.py` — the original pipeline (official split).
