@@ -1,6 +1,14 @@
 # Politomorphism — Defensive Political Anthropology Layer
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23884579.svg)](https://doi.org/10.5281/zenodo.23884579)
+
 Reproducible code and working papers on detecting political manipulation as a **defensive** practice — detection, measurement, and explanation, never generation. The code only classifies and explains existing text.
+
+## How to cite
+
+> Șerban, G. F. (2026). *A Leakage-Controlled Evaluation of Contextual and Lexical Models for Propaganda Classification.* Zenodo. https://doi.org/10.5281/zenodo.23884579
+
+ORCID: [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
 
 ## Correction (Version 2, November 2026)
 
