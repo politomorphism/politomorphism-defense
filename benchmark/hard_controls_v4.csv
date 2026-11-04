@@ -1,0 +1,9 @@
+item_id,gold_structure,gold_use,text,note
+S01,presupposition,legitimate,"The fund fell short three times this year, as the audit confirms; the committee will review the shortfalls.","device present but legitimate: premise confirmed in context."
+S02,none,na,"You can apply for the grant online or in person; both channels are open.","two legitimate options, explicitly open."
+S03,false_dilemma,problematic,"Either you back the project, or you are incompetent, or you have a hidden agenda.","three options, falsely presented as exhaustive and closed."
+S04,none,na,"The minister was called 'corrupt', but the inquiry found no evidence for it.","quoted and contested: charged word reported, not asserted."
+S05,none,na,"This reform is nothing like the purges of the old regime.","negated comparison: equivalence denied."
+S06,implied_causation,problematic,"No study links the update to the crashes, yet the report concludes the update caused them.","causal claim asserted against a stated absence of evidence."
+S07,whataboutism,undetermined,"Asked about our timeline, we point to their timeline from last year.","whataboutism with plain words; use needs context."
+S08,none,na,"Prices rose after the tariff, but economists have not agreed on the cause.","cautious causation: cause explicitly left open."
