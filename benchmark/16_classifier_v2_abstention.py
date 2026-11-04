@@ -3,28 +3,45 @@
 16_classifier_v2_abstention.py
 Technique classifier, version 2: negation-aware, with abstention.
 
-The version-1 classifier (13_technique_classifier.py) named the device well when
-one was present (0.917) but invented a device on plain controls 65% of the time,
-because it keyed on charged vocabulary. This version tests a fix suggested by
-review: tell the model that charged words are not enough, make it check whether
-the relevant claim is actually asserted or instead negated, quoted, attributed,
-hedged, or questioned, and let it answer "none" or "insufficient_evidence"
-instead of being forced to pick a device.
+The version-1 classifier (13) named the device well when one was present (0.917)
+but invented a device on plain controls 65% of the time, keying on charged
+vocabulary. This version tests a single-stage fix: tell the model that charged
+words are not proof, make it check whether the relevant claim is actually
+asserted or instead negated, quoted, hedged, or questioned, and let it answer
+"none" or "insufficient_evidence" instead of being forced to pick a device.
 
-Run it on two files to see whether the fix helps:
-  --file contrastive_pairs_v3.csv   the original 60 pairs (compare to v1's 65%)
+WHAT THIS DOES AND DOES NOT TEST. It tests classifier v2 (instructions +
+abstention), NOT the two-stage detect-then-explain gate. If false alarms fall
+here, that is evidence the instructions help, not yet evidence for the gate.
+
+Three outcomes are counted SEPARATELY, never merged: a correct answer, a false
+alarm (a device named where none is used), and an abstention
+("insufficient_evidence"). Abstention is not a correct classification.
+
+Ground truth has two axes, because a rhetorical structure is not the same as a
+manipulative use:
+  gold_structure : which device is structurally present (a technique) or "none".
+  gold_use       : "manipulative", "legitimate" (device present but not
+                   deceptive, e.g. a confirmed presupposition), or "absent".
+This lets us keep "no device" distinct from "a device used legitimately".
+
+Run it on two files:
+  --file contrastive_pairs_v3.csv   the 60 pairs. Reports, from one run, BOTH
+                                    the control false-alarm rate (compare to
+                                    v1's 0.65) AND the recall on the 60 positives
+                                    -- so a drop in false alarms that is really
+                                    just blanket refusal shows up as collapsed
+                                    recall.
   --file hard_controls.csv          hard controls (negated/quoted/open/cautious/
-                                    verified) plus inverse cases (a real device
-                                    with mild, non-charged words) -- tests the
-                                    MECHANISM, not the vocabulary.
+                                    genuine question), one legitimate-but-present
+                                    device, and inverse cases (a real device with
+                                    mild words). Tests the mechanism, not the
+                                    vocabulary.
 
-Both files share the schema pair_id,technique,member,text,rationale. Ground
-truth: a manipulative member's technique, and "none" for every control.
+For contrastive_pairs_v3.csv the two gold axes are derived (control -> absent;
+manipulative -> manipulative). hard_controls.csv carries them explicitly.
 
 Backends: --backend openai (default, needs OPENAI_API_KEY) or --backend ollama.
-Usage:
-    python 16_classifier_v2_abstention.py --file hard_controls.csv
-    python 16_classifier_v2_abstention.py --file contrastive_pairs_v3.csv
 """
 import argparse, json, time, urllib.request
 from pathlib import Path
@@ -33,6 +50,7 @@ import pandas as pd
 TECHNIQUES = ["presupposition", "manufactured_equivalence", "false_dilemma",
               "whataboutism", "loaded_rhetorical_question", "implied_causation"]
 OUTPUTS = TECHNIQUES + ["none", "insufficient_evidence"]
+ABSTAIN = "insufficient_evidence"
 
 DEFS = (
     "- presupposition: a contested claim encoded as already given.\n"
@@ -44,22 +62,19 @@ DEFS = (
     "- none: the sentence states its content plainly, with none of the devices.\n"
     "- insufficient_evidence: you cannot tell without more context."
 )
-
 SYSTEM = ("You are a careful analyst of political language. You detect a "
-          "manipulative rhetorical device only when the text actually performs "
-          "it. You never infer intent, and you never treat charged vocabulary as "
-          "proof on its own.")
+          "rhetorical device only when the text actually performs it. You never "
+          "infer intent, and never treat charged vocabulary as proof on its own.")
 PROMPT = (
     "Labels and definitions:\n\n{defs}\n\n"
     "Rules. Emotionally charged words are NOT sufficient. Before naming a device, "
     "check whether the relevant claim is actually ASSERTED by the author, or "
     "instead negated (\"not like a dictatorship\"), quoted or attributed to others "
-    "and possibly disputed (\"was called a 'thief', but...\"), hedged or presented "
-    "as uncertain, or discussed as an open question. Those are NOT the device. "
-    "Name a device only if you can identify BOTH the specific fragment AND the "
-    "problematic inference the author is actually making. If the sentence states "
-    "its content plainly, answer 'none'. If you cannot decide without more "
-    "context, answer 'insufficient_evidence'.\n\n"
+    "and possibly disputed, hedged or presented as uncertain, or asked as an open "
+    "question. Those are NOT the device. Name a device only if you can identify "
+    "BOTH the specific fragment AND the inference the author is actually making. "
+    "If the sentence states its content plainly, answer 'none'. If you cannot "
+    "decide without more context, answer 'insufficient_evidence'.\n\n"
     "Sentence:\n\"{text}\"\n\n"
     "Answer with exactly one label from: " + ", ".join(OUTPUTS) + "."
 )
@@ -109,6 +124,20 @@ def parse_label(raw):
     return None
 
 
+def gold(row):
+    """Return (gold_structure, gold_use) whether columns are explicit or derived."""
+    if "gold_use" in row and pd.notna(row.get("gold_use")):
+        return row["gold_structure"], row["gold_use"]
+    # derive from the pairs schema
+    if row.get("member") == "manipulative":
+        return row["technique"], "manipulative"
+    return "none", "absent"
+
+
+def rate(mask_num, n):
+    return f"{(mask_num/n):.3f} ({mask_num}/{n})" if n else "n/a"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--file", default="hard_controls.csv")
@@ -117,53 +146,76 @@ def main():
     args = ap.parse_args()
     asker = make_asker(args.backend, args.model)
     data = pd.read_csv(args.file)
-    stem = Path(args.file).stem
-    out_path = Path(f"{stem}_v2_predictions.csv")
+    text_col = "text"
+    out_path = Path(f"{Path(args.file).stem}_v2_predictions.csv")
     print(f"Classifier v2 (abstention) on {args.file}: {len(data)} sentences, model {args.model}")
 
     rows = []
     for i, r in data.iterrows():
-        true = r.technique if r.member == "manipulative" else "none"
-        raw = call_with_retry(asker, SYSTEM, PROMPT.format(defs=DEFS, text=r.text))
+        gs, gu = gold(r)
+        raw = call_with_retry(asker, SYSTEM, PROMPT.format(defs=DEFS, text=r[text_col]))
         pred = parse_label(raw)
-        rows.append({"pair_id": r.pair_id, "member": r.member, "true": true,
-                     "pred": pred, "raw": (raw or "").strip().replace("\n", " ")[:120]})
+        rows.append({"id": r.get("item_id", r.get("pair_id")), "gold_structure": gs,
+                     "gold_use": gu, "pred": pred,
+                     "raw": (raw or "").strip().replace("\n", " ")[:120]})
         if (i + 1) % 20 == 0:
             print(f"   {i+1}/{len(data)} done")
     df = pd.DataFrame(rows)
     df.to_csv(out_path, index=False)
+    v = df.dropna(subset=["pred"])
 
-    valid = df.dropna(subset=["pred"])
-    man = valid[valid.member == "manipulative"]
-    con = valid[valid.member == "control"]
+    def is_device(p): return p in TECHNIQUES
 
     print("\n==================  CLASSIFIER v2 (abstention)  ==================")
     print(f"File: {args.file} | model: {args.model}")
+    print("Three outcomes counted separately: correct / false-alarm / abstention.\n")
 
-    if len(man):
-        named = (man.true == man.pred).mean()
-        abst = man.pred.isin(["none", "insufficient_evidence"]).mean()
-        print(f"\nManipulative members ({len(man)}): correct device named {named:.3f}, "
-              f"abstained/none {abst:.3f}")
+    ab = v[v.gold_use == "absent"]
+    if len(ab):
+        n = len(ab)
+        correct = int((ab.pred == "none").sum())
+        false_alarm = int(ab.pred.map(is_device).sum())
+        abstain = int((ab.pred == ABSTAIN).sum())
+        print(f"[DEVICE ABSENT] n={n}  (plain text; correct answer is 'none')")
+        print(f"   correct 'none':   {rate(correct,n)}")
+        print(f"   FALSE ALARM:      {rate(false_alarm,n)}   <- compare to v1's 0.65")
+        print(f"   abstention:       {rate(abstain,n)}")
+        if false_alarm:
+            print("   devices wrongly named:", ab[ab.pred.map(is_device)].pred.value_counts().to_dict())
+
+    lg = v[v.gold_use == "legitimate"]
+    if len(lg):
+        n = len(lg)
+        named = int((lg.pred == lg.gold_structure).sum())
+        said_none = int((lg.pred == "none").sum())
+        abstain = int((lg.pred == ABSTAIN).sum())
+        print(f"\n[DEVICE PRESENT BUT LEGITIMATE] n={n}  (structure there, use not deceptive)")
+        print(f"   named the structure: {rate(named,n)}   (expected if v2 detects structure)")
+        print(f"   said 'none':         {rate(said_none,n)}   (expected if v2 tracks manipulative use)")
+        print(f"   abstention:          {rate(abstain,n)}")
+        print("   note: this axis is reported, not scored as error either way.")
+
+    mp = v[v.gold_use == "manipulative"]
+    if len(mp):
+        n = len(mp)
+        named = int((mp.pred == mp.gold_structure).sum())
+        wrong = int((mp.pred.map(is_device) & (mp.pred != mp.gold_structure)).sum())
+        miss_none = int((mp.pred == "none").sum())
+        abstain = int((mp.pred == ABSTAIN).sum())
+        print(f"\n[DEVICE MANIPULATIVE] n={n}  (a real device is used; name it)")
+        print(f"   correct device:   {rate(named,n)}   <- recall; watch this does NOT collapse")
+        print(f"   wrong device:     {rate(wrong,n)}")
+        print(f"   missed ('none'):  {rate(miss_none,n)}")
+        print(f"   abstention:       {rate(abstain,n)}")
         for t in TECHNIQUES:
-            g = man[man.true == t]
+            g = mp[mp.gold_structure == t]
             if len(g):
-                print(f"   {t:28s} named {(g.true==g.pred).mean():.2f}  ({int((g.true==g.pred).sum())}/{len(g)})")
+                print(f"      {t:28s} {rate(int((g.pred==t).sum()), len(g))}")
 
-    if len(con):
-        safe = con.pred.isin(["none", "insufficient_evidence"]).mean()
-        false_dev = (~con.pred.isin(["none", "insufficient_evidence"])).mean()
-        print(f"\nControls ({len(con)}): did NOT invent a device {safe:.3f} "
-              f"(none/insufficient) | false-device rate {false_dev:.3f}")
-        bad = con[~con.pred.isin(["none", "insufficient_evidence"])]
-        if len(bad):
-            print("   devices wrongly assigned to controls:", bad.pred.value_counts().to_dict())
-
-    print(f"\nabstention rate overall: {valid.pred.eq('insufficient_evidence').mean():.3f}")
-    print(f"Saved {out_path.name}.")
-    print("\nCompare the control false-device rate here with v1's 0.65. If it falls")
-    print("sharply, abstention + negation-awareness fixes much of the over-flagging")
-    print("in a single stage; if not, the gate (detect-then-explain) is needed.")
+    print(f"\nSaved {out_path.name}.")
+    print("Read it together: a real fix lowers FALSE ALARM on absent items WITHOUT")
+    print("collapsing recall on manipulative items. A drop in false alarms paid for")
+    print("by lost recall is blanket refusal, not understanding.")
 
 
 if __name__ == "__main__":
