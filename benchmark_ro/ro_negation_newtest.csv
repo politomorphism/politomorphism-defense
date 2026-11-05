@@ -1,0 +1,11 @@
+pair_id,technique,member,text,rationale
+N01,manufactured_equivalence,control,"Aceasta lege nu seamana deloc cu masurile regimurilor trecute.","comparatie negata; autorul nu o sustine."
+N02,manufactured_equivalence,control,"Reducerea bugetului afecteaza scolile, dar nu asa cum un razboi distruge scolile.","comparatie negata."
+N03,manufactured_equivalence,control,"A fost numit 'tiran', insa raportul nu sustine aceasta eticheta.","citat si contestat."
+N04,manufactured_equivalence,control,"Noua taxa apasa familiile, spre deosebire de cum o capcana prinde un animal.","comparatie negata."
+N05,manufactured_equivalence,control,"Masura restrange presa, dar nu precum cenzorii amuteau disidentii.","comparatie negata."
+N06,manufactured_equivalence,control,"Planul schimba spitalul, nu in felul in care o demolare rade o cladire.","comparatie negata."
+N07,manufactured_equivalence,manipulative,"Aprobarea acestui contract e totuna cu aprobarea tuturor contractelor viitoare.","echivalenta afirmata (pozitiv real)."
+N08,manufactured_equivalence,manipulative,"Noua regula urmareste cetatenii asa cum regimurile autoritare isi urmareau cetatenii.","echivalenta afirmata."
+N09,manufactured_equivalence,manipulative,"Taxa ia banii oamenilor asa cum un talhar ii ia.","echivalenta afirmata."
+N10,manufactured_equivalence,manipulative,"Interzicerea protestului reduce la tacere oamenii asa cum tiraniile ii reduceau la tacere.","echivalenta afirmata."
