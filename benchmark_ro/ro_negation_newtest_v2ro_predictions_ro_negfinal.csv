@@ -1,0 +1,11 @@
+pair_id,member,true,pred,raw,text,gold_structure,pred_final,neg
+N01,control,none,none,none,Aceasta lege nu seamana deloc cu masurile regimurilor trecute.,none,none,
+N02,control,none,manufactured_equivalence,manufactured_equivalence,"Reducerea bugetului afecteaza scolile, dar nu asa cum un razboi distruge scolile.",none,none,da
+N03,control,none,insufficient_evidence,insufficient_evidence,"A fost numit 'tiran', insa raportul nu sustine aceasta eticheta.",none,insufficient_evidence,
+N04,control,none,manufactured_equivalence,manufactured_equivalence,"Noua taxa apasa familiile, spre deosebire de cum o capcana prinde un animal.",none,none,Da
+N05,control,none,presupposition,presupposition,"Masura restrange presa, dar nu precum cenzorii amuteau disidentii.",none,presupposition,
+N06,control,none,none,none,"Planul schimba spitalul, nu in felul in care o demolare rade o cladire.",none,none,
+N07,manipulative,manufactured_equivalence,manufactured_equivalence,manufactured_equivalence,Aprobarea acestui contract e totuna cu aprobarea tuturor contractelor viitoare.,manufactured_equivalence,manufactured_equivalence,nu
+N08,manipulative,manufactured_equivalence,manufactured_equivalence,manufactured_equivalence,Noua regula urmareste cetatenii asa cum regimurile autoritare isi urmareau cetatenii.,manufactured_equivalence,manufactured_equivalence,nu
+N09,manipulative,manufactured_equivalence,manufactured_equivalence,manufactured_equivalence,Taxa ia banii oamenilor asa cum un talhar ii ia.,manufactured_equivalence,manufactured_equivalence,nu
+N10,manipulative,manufactured_equivalence,manufactured_equivalence,manufactured_equivalence,Interzicerea protestului reduce la tacere oamenii asa cum tiraniile ii reduceau la tacere.,manufactured_equivalence,manufactured_equivalence,nu
