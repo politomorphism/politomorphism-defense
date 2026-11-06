@@ -1,0 +1,35 @@
+{
+  "study": "Study 2 - targeted contrastive diagnostic of structural sensitivity",
+  "label_freeze_date_utc": "2026-11-06",
+  "status": "FROZEN before running; any later tuning requires a fresh untouched test set",
+  "dataset": {
+    "file": "benchmark/study2_mechanism_families.csv",
+    "sha256": "5d9d41414dc80c188250ed180505e7a87149741648c730ac7bc092d9a40ebfdd",
+    "n_items": 30,
+    "n_pairs": 15
+  },
+  "stage1_classifier": {
+    "file": "benchmark/16_classifier_v2_abstention.py",
+    "sha256": "fa7d5aa8723ac13c65023a9bcb01f85a9d471c8fab2466416f91fd05b8e7c7ac"
+  },
+  "stage2_verifier": {
+    "file": "benchmark/18_apply_negation_saved.py",
+    "sha256": "dcf1a7dc8e0eae70a791ae7ac422de884ab72b3a993e7b5b782a87c29b86a618"
+  },
+  "harness": {
+    "file": "benchmark/19_study2_diagnostic.py",
+    "sha256": "43c95a43442770ec12e5241e1f1ac093596969ee0ed46936b8b08d690bbf866e"
+  },
+  "model": "gpt-4o-mini",
+  "temperature": 0,
+  "evaluation_unit": "author-endorsed device (negated/quoted/hedged = not performed)",
+  "reports": [
+    "two-stage per-item log",
+    "critical-transition table",
+    "pair & required-change accuracy"
+  ],
+  "not_measured": [
+    "invariance accuracy (no invariance pairs in set)",
+    "independent label validity (no external annotators)"
+  ]
+}
