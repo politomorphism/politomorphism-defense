@@ -93,7 +93,11 @@ SKELETON = {
         #   "task_note": "",
         #   "justification": {...}},
     },
-    "negatives": {"justified": False, "source": "", "reason": ""},
+    # Three operational classes (never two): positive; verified_negative (meets
+    # the corpus annotation protocol's conditions); unlabeled_uncertain (status
+    # not confirmed -> EXCLUDED from the main binary evaluation).
+    "negatives": {"justified": False, "rule": "", "reason": "",
+                  "exclude_uncertain": True},
     "model": "gpt-4o-mini", "backend": "openai",
     "contamination_note": "A public benchmark may be in the model's training data."
 }
@@ -181,6 +185,9 @@ def read_2020(cfg):
     """SemEval-2020 Task 11 TC format: labels.tsv rows = article_id<TAB>technique
     <TAB>start<TAB>end; article text in articles_dir/article<ID>.txt. Text is read
     raw; offsets are resolved before any normalisation."""
+    if not os.path.exists(cfg.get("labels_file", "")):
+        fail(f"labels_file not found: {cfg.get('labels_file')!r}. Bring the sample "
+             f"annotation file(s) and set the path before the dry-run.")
     spans = defaultdict(list)
     with open(cfg["labels_file"], encoding="utf-8") as fh:
         for line in fh:
@@ -237,16 +244,115 @@ def parse_label(raw):
     return "none"
 
 
+# ---------------- statistics (reported only in full mode) ----------------
+def prf(tp, fp, fn):
+    p = tp / (tp + fp) if (tp + fp) else float("nan")
+    r = tp / (tp + fn) if (tp + fn) else float("nan")
+    f1 = 2 * p * r / (p + r) if (p and r and (p + r)) else float("nan")
+    return p, r, f1
+
+
+def spec_fpr(tn, fp):
+    sp = tn / (tn + fp) if (tn + fp) else float("nan")
+    return sp, (1 - sp) if sp == sp else float("nan")
+
+
+def macro_micro(per_cat):
+    """per_cat: {cat: (tp,fp,fn)}. Returns macro-F1 and micro-F1."""
+    f1s, TP, FP, FN = [], 0, 0, 0
+    for tp, fp, fn in per_cat.values():
+        _, _, f1 = prf(tp, fp, fn)
+        if f1 == f1:
+            f1s.append(f1)
+        TP += tp; FP += fp; FN += fn
+    macro = sum(f1s) / len(f1s) if f1s else float("nan")
+    _, _, micro = prf(TP, FP, FN)
+    return macro, micro
+
+
+def bootstrap_ci_by_document(items, statistic, reps=2000, seed=0, alpha=0.05):
+    """items: list of (doc_id, record). Resamples DOCUMENTS (clusters), not
+    fragments, so fragments of one article are not treated as independent."""
+    import random
+    rng = random.Random(seed)
+    by_doc = defaultdict(list)
+    for doc_id, rec in items:
+        by_doc[doc_id].append(rec)
+    docs = list(by_doc)
+    if not docs:
+        return (float("nan"), float("nan"))
+    vals = []
+    for _ in range(reps):
+        sample = []
+        for _ in range(len(docs)):
+            sample.extend(by_doc[docs[rng.randrange(len(docs))]])
+        vals.append(statistic(sample))
+    vals = sorted(v for v in vals if v == v)
+    if not vals:
+        return (float("nan"), float("nan"))
+    lo = vals[int((alpha / 2) * len(vals))]
+    hi = vals[min(len(vals) - 1, int((1 - alpha / 2) * len(vals)))]
+    return (lo, hi)
+
+
+def verify_span_alignment(articles_dir, spans, sample=50):
+    """Reconstruct annotated fragments from offsets against RAW text; report
+    mismatches (empty or out-of-range). No normalisation is applied."""
+    checked = bad = 0
+    for aid, sp in list(spans.items())[:sample]:
+        path = os.path.join(articles_dir, f"article{aid}.txt")
+        if not os.path.exists(path):
+            path = os.path.join(articles_dir, f"{aid}.txt")
+        if not os.path.exists(path):
+            bad += len(sp); checked += len(sp); continue
+        raw = open(path, encoding="utf-8").read()
+        for tech, s, e in sp:
+            checked += 1
+            if not (0 <= s < e <= len(raw)) or not raw[s:e].strip():
+                bad += 1
+    return checked, bad
+
+
+def run_manifest(cfg, extra):
+    import subprocess
+    try:
+        h = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
+                                    cwd=os.path.dirname(os.path.abspath(__file__)),
+                                    stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        h = "unknown"
+    man = {"git_commit": h, "model": cfg.get("model"), "edition": cfg.get("edition"),
+           "evaluation_unit": cfg.get("evaluation_unit"), "mode": cfg.get("_mode"),
+           "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    man.update(extra)
+    return man
+
+
+def selftest():
+    """Prove the statistics on synthetic data, with no corpus or model."""
+    per_cat = {"false_dilemma": (8, 2, 2), "implied_causation": (3, 1, 6)}
+    assert abs(prf(8, 2, 2)[0] - 0.8) < 1e-9
+    sp, fpr = spec_fpr(90, 10); assert abs(sp - 0.9) < 1e-9 and abs(fpr - 0.1) < 1e-9
+    macro, micro = macro_micro(per_cat)
+    items = [(f"doc{i%5}", 1 if i % 4 else 0) for i in range(200)]
+    lo, hi = bootstrap_ci_by_document(items, lambda s: sum(s) / len(s), reps=500)
+    print(f"selftest OK: macroF1={macro:.3f} microF1={micro:.3f} "
+          f"doc-bootstrap mean-CI=[{lo:.3f},{hi:.3f}]")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config")
     ap.add_argument("--init", action="store_true", help="write a config skeleton and exit")
-    ap.add_argument("--dry-run", action="store_true", help="check config + reader, no model calls")
+    ap.add_argument("--selftest", action="store_true", help="prove the statistics on synthetic data, no corpus/model")
+    ap.add_argument("--dry-run", action="store_true", help="check config + reader + span alignment, no model calls")
     ap.add_argument("--mode", choices=["full", "exploratory"], default="full",
                     help="full needs justified negatives; exploratory reports flag "
                          "rate on compatible positives only (no precision/specificity/"
                          "false-alarm; not used for prevalence correction)")
     a = ap.parse_args()
+    if a.selftest:
+        selftest(); return
     if a.init:
         json.dump(SKELETON, open("semeval_eval_config.json", "w"), indent=2)
         print("wrote semeval_eval_config.json - fill it, then run with --config")
@@ -272,6 +378,21 @@ def main():
           "discourse, not the negation verifier, not transportable error rates. "
           + cfg.get("contamination_note", ""))
     if a.dry_run:
+        # mechanical rows of the go/no-go table (conceptual compatibility stays a
+        # human judgement and is NOT decided here)
+        if os.path.isdir(cfg.get("articles_dir", "")) and spans:
+            checked, bad = verify_span_alignment(cfg["articles_dir"], spans)
+            print(f"span alignment: {checked-bad}/{checked} fragments reconstruct "
+                  f"from raw-text offsets ({'OK' if bad==0 else str(bad)+' MISMATCH'})")
+        else:
+            print("span alignment: not checked (articles_dir or labels not present "
+                  "yet) - bring sample files to run this check.")
+        neg = cfg.get("negatives") or {}
+        print(f"negatives: justified={bool(neg.get('justified'))} "
+              f"exclude_uncertain={neg.get('exclude_uncertain', True)} "
+              f"(unlabeled_uncertain is excluded from the main binary evaluation)")
+        print("conceptual compatibility (your definition vs corpus definition): "
+              "HUMAN JUDGEMENT - not decided by this script.")
         print("dry-run: guardrails passed; reader loaded. No model calls made.")
         return
     # evaluation loop intentionally left to run only after a dry-run on real files,
