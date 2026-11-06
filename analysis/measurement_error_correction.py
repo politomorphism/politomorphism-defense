@@ -1,50 +1,77 @@
 # -*- coding: utf-8 -*-
 """
-measurement_error_correction.py
-Recovering true prevalence D_{k,t} from a fallible detector (Rogan-Gladen).
+measurement_error_correction.py  (v2 - corrected after review)
 
-A detector with sensitivity (recall) r and specificity sp flags a fraction of a
-corpus. That observed flag rate is NOT the true prevalence pi; it is
-    flag_rate = r*pi + (1-sp)*(1-pi).
-Reading flag_rate as prevalence overestimates a rare phenomenon, because false
-positives dominate at low prevalence. The Rogan-Gladen estimator inverts this:
-    pi_hat = (flag_rate - (1-sp)) / (r - (1-sp)),   truncated to [0,1].
-It is unbiased when r and sp are known and stable, but its variance inflates as
-the denominator (r - (1-sp)) shrinks (poor separation), so it needs many texts
-and breaks down when the classifier barely separates the classes.
+Connecting a fallible detector to an AGGREGATE input D_{k,t} of the forecasting
+model. Rogan-Gladen inversion is an ESTABLISHED method; the contribution is its
+careful integration into the measurement architecture, not a new estimator.
 
-This makes the honest point for using the detector as a measured input to a
-dynamics model: D_{k,t} is defensible as an ERROR-CORRECTED AGGREGATE over many
-messages, not as item-level labels (which stay mostly wrong at low prevalence).
-
-No model calls; pure computation. Operating point: r=0.90, sp=0.85 (f=0.15).
+CORRECTIONS incorporated (do not regress these):
+ 1. Truncation to [0,1] gives admissible values but introduces BOUNDARY BIAS;
+    only the UNTRUNCATED estimator is unbiased, and only when r,f are known and
+    applicable. Estimated r,f add variance and finite-sample bias.
+ 2. The recovery table is ILLUSTRATIVE EXPECTED VALUES under fixed r,f, not
+    empirical recovery from noisy observations.
+ 3. D_{k,t} needs CATEGORY-SPECIFIC calibration r_k=P(Yhat=k|Y=k),
+    f_k=P(Yhat=k|Y!=k) where the negatives INCLUDE other categories, not only
+    'none'. Pooled 54/60 and 9/60 do NOT establish r_k,sp_k per category.
+ 4. Abstention: define Z=1 iff category flagged, 0 otherwise (abstention counts
+    as 0). The correction concerns P(flag); calibration must use the same Z.
+ 5. More corpus messages do NOT remove calibration uncertainty: Var(pi_hat) has
+    terms in Var(r_hat),Var(f_hat) that an infinite corpus cannot shrink.
+ 6. 'Raw flag proportion is upward-biased noise' is wrong: bias q-pi =
+    f(1-pi)-(1-r)pi changes sign (here at pi=60%). And 'most labels wrong' is
+    wrong: at low prevalence most FLAGS may be wrong, not most labels.
+ 7. Strongest step: a binomial OBSERVATION MODEL with latent prevalence;
+    flag counts alone cannot identify (pi, r, f) jointly - calibration is needed.
 """
 import numpy as np
 
-def flag_rate(r, sp, pi): return r*pi + (1-sp)*(1-pi)
-def rogan_gladen(fr, r, sp):
-    denom = r - (1-sp)
-    return np.clip((fr - (1-sp))/denom, 0, 1) if denom > 0 else np.nan
-def rg_se(fr, r, sp, n):
-    # approximate standard error of the corrected estimate
-    denom = r - (1-sp)
-    return np.sqrt(fr*(1-fr)/n)/denom if denom > 0 else np.nan
+def q_of(r, f, pi):            # population flag probability
+    return f + (r - f) * pi
+def rg(qhat, r, f):            # untruncated Rogan-Gladen
+    return (qhat - f) / (r - f)
+def rg_bounded(qhat, r, f):
+    return min(1.0, max(0.0, rg(qhat, r, f)))
 
 if __name__ == "__main__":
-    r, sp = 0.90, 0.85
-    print(f"Detector: sensitivity r={r}, specificity sp={sp} (false-alarm rate {1-sp:.2f})")
-    print(f"\n{'true pi':>9}{'observed flag rate':>20}{'naive reading':>16}{'Rogan-Gladen':>15}")
-    for pi in [0.01, 0.02, 0.05, 0.10, 0.20, 0.40]:
-        fr = flag_rate(r, sp, pi)
-        print(f"{pi*100:>7.0f}% {fr*100:>18.1f}% {fr*100:>14.1f}% {rogan_gladen(fr,r,sp)*100:>13.1f}%")
-    print("\nThe naive flag rate overstates a rare phenomenon (e.g. 18.8% observed when")
-    print("true prevalence is 5%); the correction recovers 5%. But precision of the")
-    print("correction needs volume:")
-    pi = 0.05; fr = flag_rate(r, sp, pi)
-    print(f"\n  at true pi=5%, observed flag rate {fr*100:.1f}%, corrected 95% CI half-width:")
-    for n in [100, 1000, 10000, 100000]:
-        print(f"     n={n:>7}: +/- {1.96*rg_se(fr,r,sp,n)*100:.2f} percentage points")
-    print("\nHonest reading: the detector can measure prevalence D_k,t without bias at the")
-    print("AGGREGATE level given known, stable r and sp and enough messages; item-level")
-    print("labels remain mostly wrong at low prevalence. r and sp must be re-estimated")
-    print("per domain, since they drift across corpora.")
+    r, f = 0.90, 0.15
+    print(f"Operating point: r={r}, f={f}  (q = f + (r-f)*pi = {f} + {r-f}*pi)\n")
+
+    print("TABLE 1 - ILLUSTRATIVE EXPECTED VALUES under fixed r,f")
+    print("(algebraic recovery from EXPECTED flag rates, not from noisy data)")
+    print(f"{'true pi':>9}{'expected q':>13}{'naive reading':>16}{'RG (untrunc.)':>16}")
+    for pi in [0.01, 0.05, 0.10, 0.20, 0.40]:
+        q = q_of(r, f, pi)
+        print(f"{pi*100:>7.0f}% {q*100:>11.1f}% {q*100:>14.1f}% {rg(q,r,f)*100:>14.1f}%")
+
+    print("\nTABLE 2 - BIAS OF THE RAW FLAG PROPORTION as an estimator of pi")
+    print("bias(pi) = q - pi = f(1-pi) - (1-r)pi ; sign flips, not universally up")
+    pistar = f / (f + (1 - r))
+    for pi in [0.05, 0.30, 0.60, 0.80]:
+        b = q_of(r, f, pi) - pi
+        print(f"   pi={pi*100:>4.0f}%  bias = {b*100:+5.1f} pp")
+    print(f"   -> bias crosses zero at pi* = f/(f+(1-r)) = {pistar*100:.0f}%")
+
+    print("\nTABLE 3 - CALIBRATION UNCERTAINTY DOES NOT VANISH WITH CORPUS SIZE")
+    print("Var(pi_hat) ~ [Var(qhat) + pi^2 Var(r_hat) + (1-pi)^2 Var(f_hat)]/(r-f)^2")
+    print("Take an INFINITE corpus (Var(qhat)->0); vary calibration set sizes.")
+    pi = 0.05
+    for n_cal in [60, 600, 6000]:
+        var_r = r*(1-r)/n_cal
+        var_f = f*(1-f)/n_cal
+        var_pi = (pi**2*var_r + (1-pi)**2*var_f) / (r-f)**2   # Var(qhat)=0
+        hw = 1.96*np.sqrt(var_pi)
+        print(f"   calibration n={n_cal:>5} (per class): residual 95% half-width = +/- {hw*100:.2f} pp")
+    print("   -> at low prevalence the false-positive-rate uncertainty dominates;")
+    print("      a larger corpus cannot compensate a poorly estimated f.")
+
+    print("\nTABLE 4 - NON-IDENTIFIABILITY: flags alone cannot pin pi AND f,r")
+    qobs = q_of(r, f, 0.05)
+    print(f"   one observed flag rate q={qobs*100:.1f}% is consistent with many (pi,f) at r={r}:")
+    for ftest in [0.075, 0.10, 0.15, 0.1875]:
+        pit = (qobs - ftest)/(r - ftest)
+        print(f"      if f={ftest:.4f} -> implied pi = {max(pit,0)*100:5.1f}%")
+    print("   -> only independent calibration of r,f identifies pi. Hence the")
+    print("      observation model F_k,t ~ Binomial(n_t, f_k+(r_k-f_k)*pi_k,t),")
+    print("      with pi_k,t the latent D_k,t and calibration data informing r_k,f_k.")
