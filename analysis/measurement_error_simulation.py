@@ -34,12 +34,15 @@ def simulate(pi, r, f, m_pos, m_neg, n_corpus, reps=20000):
     bounded = np.clip(pihat, 0, 1)
     oor = (pihat < 0) | (pihat > 1)
     v = ok & np.isfinite(pihat)
+    cov = np.mean(cover[v])
+    nn = int(np.sum(v))
     return {
         "mean_untrunc": np.nanmean(pihat[v]),
         "bias_untrunc": np.nanmean(pihat[v]) - pi,
         "mean_bounded": np.nanmean(bounded[v]),
         "bias_bounded": np.nanmean(bounded[v]) - pi,
-        "coverage": np.mean(cover[v]),
+        "coverage": cov,
+        "coverage_mc_se": np.sqrt(cov*(1-cov)/nn),   # Monte Carlo SE of coverage
         "median_hw": np.nanmedian(1.96*se[v]),
         "pct_out_of_range": 100*np.mean(oor[v]),
         "pct_degenerate": 100*np.mean(~ok),
@@ -47,20 +50,25 @@ def simulate(pi, r, f, m_pos, m_neg, n_corpus, reps=20000):
 
 if __name__ == "__main__":
     r, f = 0.90, 0.15
-    print(f"Monte Carlo (20,000 reps). True pi=0.05, r={r}, f={f}, corpus n=100,000.")
-    print("Nominal interval coverage is 95%.\n")
-    hdr = f"{'m+ = m-':>8}{'bias(untr)':>12}{'bias(bnd)':>11}{'coverage':>10}{'med 95% HW':>13}{'% out-range':>13}"
+    REPS = 20000
+    print("SIMULATED SCENARIO (results are empirical coverage IN THIS SCENARIO,")
+    print("not a general property of the method).")
+    print(f"  generating parameters: r={r}, f={f}; corpus n=100,000; reps={REPS:,}")
+    print("  estimator: untruncated Rogan-Gladen pihat=(qhat-fhat)/(rhat-fhat)")
+    print("  interval : pihat +/- 1.96*SE, SE from the delta-method variance with")
+    print("             estimated (rhat,fhat,qhat); coverage = fraction of intervals")
+    print("             containing the true pi (interval NOT clipped to [0,1]).")
+    print("  Monte Carlo SE of each coverage figure ~ sqrt(p(1-p)/reps) (reported).")
+    print("  Nominal coverage = 95%.\n")
+    hdr = f"{'pi':>6}{'m+=m-':>7}{'bias(untr)':>12}{'bias(bnd)':>11}{'coverage':>10}{'MC SE':>8}{'med HW':>9}{'%out[0,1]':>11}"
     print(hdr); print("-"*len(hdr))
-    for m in [60, 600, 6000]:
-        s = simulate(0.05, r, f, m, m, 100000)
-        print(f"{m:>8}{s['bias_untrunc']*100:>+11.2f}{s['bias_bounded']*100:>+11.2f}"
-              f"{s['coverage']*100:>9.1f}%{s['median_hw']*100:>11.2f}pp{s['pct_out_of_range']:>11.1f}%")
-    print("\nSame, but true pi=0.20 (farther from the boundary):")
-    print(hdr); print("-"*len(hdr))
-    for m in [60, 600, 6000]:
-        s = simulate(0.20, r, f, m, m, 100000)
-        print(f"{m:>8}{s['bias_untrunc']*100:>+11.2f}{s['bias_bounded']*100:>+11.2f}"
-              f"{s['coverage']*100:>9.1f}%{s['median_hw']*100:>11.2f}pp{s['pct_out_of_range']:>11.1f}%")
+    for pi in [0.05, 0.20]:
+        for m in [60, 600, 6000]:
+            s = simulate(pi, r, f, m, m, 100000, reps=REPS)
+            print(f"{pi:>6.2f}{m:>7}{s['bias_untrunc']*100:>+11.2f}{s['bias_bounded']*100:>+11.2f}"
+                  f"{s['coverage']*100:>9.1f}%{s['coverage_mc_se']*100:>7.2f}{s['median_hw']*100:>8.2f}pp{s['pct_out_of_range']:>10.1f}%")
     print("\nReading: the untruncated estimator is ~unbiased; boundary truncation")
-    print("biases upward most at tiny m and low pi; delta-method coverage is poor")
-    print("at m=60 near the boundary and approaches nominal only as calibration grows.")
+    print("biases upward most at small m and low pi; delta-method coverage is")
+    print("below nominal at m=60 near the boundary and approaches the nominal level")
+    print("in the evaluated scenarios as calibration grows. These are scenario-")
+    print("specific results, not guaranteed coverage for a deployed detector.")
