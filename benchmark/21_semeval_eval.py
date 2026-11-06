@@ -16,8 +16,13 @@ Guardrails enforced before any model call:
      different units are never compared.
   3. Negatives: unlabeled text is used as negative ONLY if negatives.justified
      is true with a documented reason tied to the corpus annotation protocol.
-     Otherwise false-alarm rate is NOT estimated and prevalence correction is
-     not attempted from this run.
+     Otherwise the FULL evaluation is blocked. CHANGE FROM THE EARLIER PROTOCOL:
+     the earlier protocol excluded any positives-only run; this version adds a
+     separate, clearly bounded --mode exploratory that reports the flag rate on
+     compatible positives only. It does NOT relax the full-evaluation rule, does
+     NOT report precision/specificity/false-alarm, and is NEVER used for
+     prevalence correction. The two are documented as distinct modes, not two
+     contradictory rules.
   4. Spans are read against the RAW text; the text is NOT normalised before the
      character offsets are resolved (normalisation shifts annotated fragments).
 
@@ -134,12 +139,30 @@ def check_config(cfg):
                          f"{mycat}-specific evaluation) or 'combined_task'. "
                          f"Allowing it does not make it a valid reference for "
                          f"{mycat} alone.")
-                if mh == "combined_task" and not spec.get("combined_outputs"):
-                    fail(f"merged_handling='combined_task' for '{lab}' needs "
-                         f"combined_outputs: which detector labels count as a hit "
-                         f"for the combined task. Absence of a {mycat} flag on a "
-                         f"non-{mycat} member of the merged class is NOT scored as "
-                         f"a {mycat} miss.")
+                if mh == "combined_task":
+                    comps = [c.strip() for c in lab.split(",") if c.strip()]
+                    cout = spec.get("combined_outputs") or {}
+                    if not cout:
+                        fail(f"merged_handling='combined_task' for '{lab}' needs "
+                             f"combined_outputs: a detector output for EACH "
+                             f"component of the merged class. Absence of a {mycat} "
+                             f"flag on a non-{mycat} member is NOT scored as a "
+                             f"{mycat} miss.")
+                    # the detector outputs must actually cover the SAME union of
+                    # techniques as the corpus label; an explicit list is not
+                    # enough if the detector cannot represent every component.
+                    uncovered = [c for c in comps if not str(cout.get(c, "")).strip()]
+                    if uncovered:
+                        fail(f"combined_task for '{lab}' is invalid: the detector "
+                             f"has no output mapped for component(s) {uncovered}. "
+                             f"The combined task must span the same union of "
+                             f"techniques as the corpus label; since the detector "
+                             f"does not cover all components, use "
+                             f"merged_handling='exclude' instead.")
+                    bad = [c for c, o in cout.items() if o not in OUTPUTS]
+                    if bad:
+                        fail(f"combined_outputs maps component(s) to non-detector "
+                             f"labels: {bad}. Use one of {OUTPUTS}.")
     neg = cfg.get("negatives") or {}
     mode = cfg.get("_mode", "full")
     if mode == "full" and not neg.get("justified"):
