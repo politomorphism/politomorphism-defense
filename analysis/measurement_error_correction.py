@@ -55,23 +55,33 @@ if __name__ == "__main__":
 
     print("\nTABLE 3 - CALIBRATION UNCERTAINTY DOES NOT VANISH WITH CORPUS SIZE")
     print("Var(pi_hat) ~ [Var(qhat) + pi^2 Var(r_hat) + (1-pi)^2 Var(f_hat)]/(r-f)^2")
-    print("Take an INFINITE corpus (Var(qhat)->0); vary calibration set sizes.")
+    print("ASSUMES the three estimates are mutually independent (else add covariance")
+    print("terms) and r != f (at r=f the flag rate carries no information on pi).")
+    print("m = calibration messages PER CLASS: m+ reference-positives, m- reference-")
+    print("negatives (so m=60 means 120 calibration messages). Corpus taken infinite.")
+    print("These are illustrative delta-method half-widths, NOT guaranteed coverage.")
     pi = 0.05
-    for n_cal in [60, 600, 6000]:
-        var_r = r*(1-r)/n_cal
-        var_f = f*(1-f)/n_cal
+    for m in [60, 600, 6000]:
+        var_r = r*(1-r)/m
+        var_f = f*(1-f)/m
         var_pi = (pi**2*var_r + (1-pi)**2*var_f) / (r-f)**2   # Var(qhat)=0
         hw = 1.96*np.sqrt(var_pi)
-        print(f"   calibration n={n_cal:>5} (per class): residual 95% half-width = +/- {hw*100:.2f} pp")
+        print(f"   m+ = m- = {m:>5}: residual 95% half-width = +/- {hw*100:.2f} pp")
     print("   -> at low prevalence the false-positive-rate uncertainty dominates;")
-    print("      a larger corpus cannot compensate a poorly estimated f.")
+    print("      a larger corpus cannot compensate a poorly estimated f. The m=60")
+    print("      row is especially unsuitable as a symmetric bounded interval.")
 
     print("\nTABLE 4 - NON-IDENTIFIABILITY: flags alone cannot pin pi AND f,r")
-    qobs = q_of(r, f, 0.05)
-    print(f"   one observed flag rate q={qobs*100:.1f}% is consistent with many (pi,f) at r={r}:")
-    for ftest in [0.075, 0.10, 0.15, 0.1875]:
+    qobs = 0.1875  # exact expected flag rate at pi=0.05 (not the rounded 18.8%)
+    print(f"   one observed flag rate q={qobs} is consistent with many (pi,f) at r={r}:")
+    for ftest in [0.150, 0.100, 0.075]:
         pit = (qobs - ftest)/(r - ftest)
-        print(f"      if f={ftest:.4f} -> implied pi = {max(pit,0)*100:5.1f}%")
-    print("   -> only independent calibration of r,f identifies pi. Hence the")
-    print("      observation model F_k,t ~ Binomial(n_t, f_k+(r_k-f_k)*pi_k,t),")
-    print("      with pi_k,t the latent D_k,t and calibration data informing r_k,f_k.")
+        print(f"      if f={ftest:.3f} -> compatible pi = {pit*100:5.2f}%")
+    print("   -> Flag counts alone do not identify prevalence and both classification")
+    print("      rates. This needs external calibration OR other defensible identifying")
+    print("      restrictions; finite calibration constrains pi but does not determine")
+    print("      it without uncertainty. The chosen strategy here is a joint model with")
+    print("      a calibration likelihood:")
+    print("        A+ ~ Binomial(m+, r)      A- ~ Binomial(m-, f)")
+    print("        F_t ~ Binomial(n_t, f + (r-f)*pi_t),   D_k,t = pi_t (latent)")
+    print("      (see measurement_error_simulation.py for coverage/bias evidence).")
