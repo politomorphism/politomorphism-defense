@@ -96,6 +96,28 @@ def main():
         default=200,
         help="Characters displayed before and after each span.",
     )
+    parser.add_argument(
+        "--split",
+        default="unspecified",
+        help="Documented provenance of this data: train | dev | test | "
+             "unspecified. Recorded in the manifest and report.",
+    )
+    parser.add_argument(
+        "--verify-sample",
+        type=int,
+        default=0,
+        help="Print this many randomly-sampled spans (text + context) for MANUAL "
+             "confirmation that the fragment matches the annotation; range checks "
+             "alone do not prove semantic correspondence.",
+    )
+    parser.add_argument(
+        "--peek",
+        action="store_true",
+        help="Print the first raw lines and the column-count histogram of each "
+             "annotation file, then exit WITHOUT parsing. Use this first to "
+             "confirm the real corpus uses the article_id/label/start/end 4-column "
+             "format before trusting the parse.",
+    )
     args = parser.parse_args()
 
     if args.context_chars < 0:
@@ -117,6 +139,22 @@ def main():
 
     if not label_files:
         parser.error("No annotation files found. Check --labels-glob.")
+
+    # Improvement 2: confirm the real TSV format before trusting the parse.
+    if args.peek:
+        for path in label_files:
+            print(f"\n=== {path} ===")
+            counts = Counter()
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                for i, row in enumerate(csv.reader(handle, delimiter="\t")):
+                    if row and any(c.strip() for c in row):
+                        counts[len(row)] += 1
+                    if i < 5:
+                        print(f"  line {i+1} ({len(row)} cols): {row}")
+            print(f"  column-count histogram (non-empty rows): {dict(counts)}")
+        print("\npeek only: no parsing done. Confirm the 4-column "
+              "article_id/label/start/end format before a full run.")
+        return 0
 
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -156,14 +194,26 @@ def main():
             "kind": "article",
             "path": str(path),
             "sha256": sha256(path),
+            "dataset_split": args.split,
         })
 
     if not articles:
         errors.append("No readable article<ID>.txt files found.")
 
+    # Improvement 5: different IDs with identical article content (exact dup).
+    content_hash_to_ids = {}
+    for aid, info in articles.items():
+        h = hashlib.sha256(info["text"].encode("utf-8")).hexdigest()
+        content_hash_to_ids.setdefault(h, []).append(aid)
+    content_duplicate_groups = [
+        sorted(ids) for ids in content_hash_to_ids.values() if len(ids) > 1
+    ]
+
     # Aggregate labels only when article ID and boundaries match exactly.
     span_labels = {}
     span_sources = {}
+    span_source_files = {}
+    column_counts = Counter()
     seen_annotations = set()
     duplicate_annotations = 0
 
@@ -172,6 +222,7 @@ def main():
             "kind": "annotations",
             "path": str(path),
             "sha256": sha256(path),
+            "dataset_split": args.split,
         })
 
         try:
@@ -188,6 +239,7 @@ def main():
                 continue
 
             location = f"{path}:{line_number}"
+            column_counts[len(fields)] += 1
 
             if len(fields) != 4:
                 errors.append(
@@ -234,6 +286,7 @@ def main():
             key = (article_id, start, end)
             span_labels.setdefault(key, set()).add(label)
             span_sources.setdefault(key, []).append(location)
+            span_source_files.setdefault(key, set()).add(str(path))
 
     save_json(args.out / "manifest.json", manifest)
 
@@ -308,22 +361,37 @@ def main():
         writer.writeheader()
         writer.writerows(output_rows)
 
+    multi_same = sum(
+        1 for key, labels in span_labels.items()
+        if len(labels) > 1 and len(span_source_files.get(key, set())) == 1
+    )
+    multi_cross = sum(
+        1 for key, labels in span_labels.items()
+        if len(labels) > 1 and len(span_source_files.get(key, set())) > 1
+    )
+
     report = {
         "status": "technical_inspection_passed",
         "meaning": (
             "Files parsed and offsets passed range checks. "
             "Manual inspection is still needed to confirm text alignment."
         ),
+        "dataset_split": args.split,
+        "tsv_column_counts": dict(column_counts),
         "articles_loaded": len(articles),
         "articles_with_annotations": len({
             key[0] for key in span_labels
         }),
+        "content_duplicate_groups": content_duplicate_groups,
         "unique_spans": len(span_labels),
         "unique_span_label_annotations": len(seen_annotations),
         "duplicate_annotation_rows": duplicate_annotations,
         "spans_with_multiple_labels": sum(
             len(labels) > 1 for labels in span_labels.values()
         ),
+        "multi_label_same_file": multi_same,
+        "multi_label_cross_file": multi_cross,
+        "manual_sample_verification_required": True,
         "labels": [
             {
                 "label": label,
@@ -340,14 +408,42 @@ def main():
             "Do not treat unannotated text as automatically negative.",
             "Context columns are inspection aids, not a frozen model input.",
             "Use one documented dataset split per audit.",
+            "Range checks do not prove the fragment matches the annotation; "
+            "verify a sample manually (--verify-sample).",
         ],
     }
+    if args.split == "unspecified":
+        report["cautions"].append(
+            "dataset_split is 'unspecified'; set --split train|dev|test with "
+            "documented provenance before any evaluation.")
+    if content_duplicate_groups:
+        report["cautions"].append(
+            f"{len(content_duplicate_groups)} group(s) of different article IDs "
+            f"share identical content; resolve before counting.")
+    if multi_cross:
+        report["cautions"].append(
+            f"{multi_cross} multi-label span(s) draw labels from DIFFERENT files; "
+            f"confirm these are genuine multi-labels, not split/corpus duplication.")
 
     save_json(args.out / "report.json", report)
 
+    # Improvement 1: manual sample verification of fragment<->annotation match.
+    if args.verify_sample > 0:
+        import random
+        keys = list(span_labels)
+        random.Random(0).shuffle(keys)
+        print(f"\n--- MANUAL VERIFICATION SAMPLE ({min(args.verify_sample, len(keys))}) ---")
+        for (aid, s, e) in keys[:args.verify_sample]:
+            txt = articles[aid]["text"]
+            print(f"[article {aid} {s}:{e}] labels={sorted(span_labels[(aid,s,e)])}")
+            print(f"    ...{txt[max(0,s-40):s]}[[{txt[s:e]}]]{txt[e:e+40]}...")
+        print("--- confirm each bracketed span is the intended fragment ---")
+
     print("Technical inspection completed.")
-    print(f"Articles loaded: {len(articles)}")
-    print(f"Unique spans: {len(span_labels)}")
+    print(f"Articles loaded: {len(articles)}  split={args.split}")
+    print(f"Unique spans: {len(span_labels)}  tsv_columns={dict(column_counts)}")
+    if content_duplicate_groups:
+        print(f"WARNING: content-duplicate article groups: {content_duplicate_groups}")
     print("\nExact labels found:")
 
     for label, count in sorted(label_counts.items()):
