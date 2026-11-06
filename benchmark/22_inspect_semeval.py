@@ -97,10 +97,16 @@ def main():
         help="Characters displayed before and after each span.",
     )
     parser.add_argument(
-        "--split",
-        default="unspecified",
-        help="Documented provenance of this data: train | dev | test | "
-             "unspecified. Recorded in the manifest and report.",
+        "--dataset-split",
+        required=True,
+        choices=["train", "dev", "test"],
+        help="Split declared according to the dataset documentation.",
+    )
+    parser.add_argument(
+        "--split-source",
+        required=True,
+        help="Documented source supporting the split assignment: README "
+             "section, official archive name, or documentation URL.",
     )
     parser.add_argument(
         "--verify-sample",
@@ -119,6 +125,11 @@ def main():
              "format before trusting the parse.",
     )
     args = parser.parse_args()
+
+    if not args.split_source.strip():
+        parser.error("--split-source must contain a provenance reference.")
+    # Note: this is a DOCUMENTED declaration, not an automatic verification of
+    # split membership.
 
     if args.context_chars < 0:
         parser.error("--context-chars must be non-negative.")
@@ -194,20 +205,10 @@ def main():
             "kind": "article",
             "path": str(path),
             "sha256": sha256(path),
-            "dataset_split": args.split,
         })
 
     if not articles:
         errors.append("No readable article<ID>.txt files found.")
-
-    # Improvement 5: different IDs with identical article content (exact dup).
-    content_hash_to_ids = {}
-    for aid, info in articles.items():
-        h = hashlib.sha256(info["text"].encode("utf-8")).hexdigest()
-        content_hash_to_ids.setdefault(h, []).append(aid)
-    content_duplicate_groups = [
-        sorted(ids) for ids in content_hash_to_ids.values() if len(ids) > 1
-    ]
 
     # Aggregate labels only when article ID and boundaries match exactly.
     span_labels = {}
@@ -222,7 +223,6 @@ def main():
             "kind": "annotations",
             "path": str(path),
             "sha256": sha256(path),
-            "dataset_split": args.split,
         })
 
         try:
@@ -288,7 +288,42 @@ def main():
             span_sources.setdefault(key, []).append(location)
             span_source_files.setdefault(key, set()).add(str(path))
 
+    # Record provenance on every manifest entry (declared, not auto-verified).
+    for entry in manifest:
+        entry["dataset_split"] = args.dataset_split
+        entry["split_source"] = args.split_source
+        entry["split_assignment_status"] = "declared_not_independently_verified"
+
+    # Detect exact byte-identical articles, including different article IDs.
+    paths_by_hash = {}
+    for entry in manifest:
+        if entry["kind"] != "article":
+            continue
+        paths_by_hash.setdefault(entry["sha256"], []).append(entry["path"])
+
+    exact_duplicate_groups = [
+        {"sha256": digest, "paths": paths, "file_count": len(paths)}
+        for digest, paths in sorted(paths_by_hash.items())
+        if len(paths) > 1
+    ]
+    duplicate_audit = {
+        "scope": "article files included in this run",
+        "comparison": "SHA-256 of original file bytes",
+        "exact_duplicate_groups": exact_duplicate_groups,
+        "extra_identical_files": sum(
+            g["file_count"] - 1 for g in exact_duplicate_groups
+        ),
+        "files_removed": False,
+        "limitations": [
+            "Different bytes do not prove different substantive content.",
+            "Near-duplicates are not detected.",
+            "Cross-split duplication requires comparison with other manifests.",
+            "Duplicate groups require a documented decision before evaluation.",
+        ],
+    }
+
     save_json(args.out / "manifest.json", manifest)
+    save_json(args.out / "duplicates.json", duplicate_audit)
 
     # Avoid leaving old successful outputs after a failed rerun.
     for name in ("spans.csv", "report.json"):
@@ -376,13 +411,17 @@ def main():
             "Files parsed and offsets passed range checks. "
             "Manual inspection is still needed to confirm text alignment."
         ),
-        "dataset_split": args.split,
+        "dataset_split": args.dataset_split,
+        "split_source": args.split_source,
+        "split_assignment_status": "declared_not_independently_verified",
         "tsv_column_counts": dict(column_counts),
         "articles_loaded": len(articles),
         "articles_with_annotations": len({
             key[0] for key in span_labels
         }),
-        "content_duplicate_groups": content_duplicate_groups,
+        "exact_duplicate_groups": len(exact_duplicate_groups),
+        "extra_identical_files": duplicate_audit["extra_identical_files"],
+        "duplicate_review_required": bool(exact_duplicate_groups),
         "unique_spans": len(span_labels),
         "unique_span_label_annotations": len(seen_annotations),
         "duplicate_annotation_rows": duplicate_annotations,
@@ -391,7 +430,7 @@ def main():
         ),
         "multi_label_same_file": multi_same,
         "multi_label_cross_file": multi_cross,
-        "manual_sample_verification_required": True,
+        "manual_span_review_completed": False,
         "labels": [
             {
                 "label": label,
@@ -412,14 +451,11 @@ def main():
             "verify a sample manually (--verify-sample).",
         ],
     }
-    if args.split == "unspecified":
+    if exact_duplicate_groups:
         report["cautions"].append(
-            "dataset_split is 'unspecified'; set --split train|dev|test with "
-            "documented provenance before any evaluation.")
-    if content_duplicate_groups:
-        report["cautions"].append(
-            f"{len(content_duplicate_groups)} group(s) of different article IDs "
-            f"share identical content; resolve before counting.")
+            f"{len(exact_duplicate_groups)} group(s) of byte-identical article "
+            f"files (see duplicates.json); documented decision required before "
+            f"evaluation. The script flags, it does not remove them.")
     if multi_cross:
         report["cautions"].append(
             f"{multi_cross} multi-label span(s) draw labels from DIFFERENT files; "
@@ -440,10 +476,12 @@ def main():
         print("--- confirm each bracketed span is the intended fragment ---")
 
     print("Technical inspection completed.")
-    print(f"Articles loaded: {len(articles)}  split={args.split}")
+    print(f"Articles loaded: {len(articles)}  split={args.dataset_split} "
+          f"(declared; source: {args.split_source})")
     print(f"Unique spans: {len(span_labels)}  tsv_columns={dict(column_counts)}")
-    if content_duplicate_groups:
-        print(f"WARNING: content-duplicate article groups: {content_duplicate_groups}")
+    if exact_duplicate_groups:
+        print(f"WARNING: {len(exact_duplicate_groups)} byte-identical article "
+              f"group(s); see {args.out / 'duplicates.json'}")
     print("\nExact labels found:")
 
     for label, count in sorted(label_counts.items()):
