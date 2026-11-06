@@ -74,10 +74,19 @@ SKELETON = {
     "labels_file": "PATH/TO/labels.tsv",       # span annotations
     "evaluation_unit": "",                     # REQUIRED: fragment | sentence | paragraph
     "mapping": {                               # REQUIRED: my_category -> corpus label(s)
-        # "false_dilemma": {"corpus_labels": ["Black-and-White_Fallacy"],
-        #                   "definition_checked": False, "notes": ""},
-        # "whataboutism": {"corpus_labels": ["Whataboutism,Straw_Men,Red_Herring"],
-        #                   "allow_merged": False, "reason": "", "definition_checked": False},
+        # Each mapping needs a justification RECORD (existence checked here, not
+        # scientific validity), and merged classes need explicit handling.
+        # "false_dilemma": {
+        #   "corpus_labels": ["Black-and-White_Fallacy"],
+        #   "justification": {"your_definition": "", "corpus_definition": "",
+        #                     "source": "version/section/page", "differences": "",
+        #                     "decision": "", "rationale": ""}},
+        # "whataboutism": {
+        #   "corpus_labels": ["Whataboutism,Straw_Men,Red_Herring"],
+        #   "merged_handling": "exclude",          # or "combined_task"
+        #   "combined_outputs": [],                # required iff combined_task
+        #   "task_note": "",
+        #   "justification": {...}},
     },
     "negatives": {"justified": False, "source": "", "reason": ""},
     "model": "gpt-4o-mini", "backend": "openai",
@@ -99,25 +108,47 @@ def check_config(cfg):
     if not mapping:
         fail("mapping is empty. Build the verified label-mapping table FIRST; "
              "there is no default mapping.")
+    JREQ = ["your_definition", "corpus_definition", "source", "differences",
+            "decision", "rationale"]
     for mycat, spec in mapping.items():
         if mycat not in TECHNIQUES:
             fail(f"mapping key '{mycat}' is not one of the six categories.")
         if not spec.get("corpus_labels"):
             fail(f"mapping['{mycat}'] has no corpus_labels.")
-        if not spec.get("definition_checked"):
-            fail(f"mapping['{mycat}'].definition_checked is False: confirm the "
-                 f"corpus label's definition matches yours before mapping.")
+        # a justification RECORD must exist (existence checked, not its validity)
+        j = spec.get("justification") or {}
+        missing = [k for k in JREQ if not str(j.get(k, "")).strip()]
+        if missing:
+            fail(f"mapping['{mycat}'].justification is incomplete (missing/empty: "
+                 f"{missing}). A ticked flag is not evidence; record your "
+                 f"definition, the corpus definition, the exact source "
+                 f"(version/section/page), the differences, the decision and its "
+                 f"rationale. The script checks this record exists, not that the "
+                 f"mapping is scientifically correct.")
         for lab in spec["corpus_labels"]:
-            if ("," in lab) and not spec.get("allow_merged"):
-                fail(f"corpus label '{lab}' is a MERGED class; set allow_merged "
-                     f"true and give a reason, and treat positives as a mixed "
-                     f"class, not pure {mycat}.")
+            if "," in lab:  # merged corpus class
+                mh = spec.get("merged_handling")
+                if mh not in ("exclude", "combined_task"):
+                    fail(f"corpus label '{lab}' is a MERGED class; set "
+                         f"merged_handling to 'exclude' (drop it from the "
+                         f"{mycat}-specific evaluation) or 'combined_task'. "
+                         f"Allowing it does not make it a valid reference for "
+                         f"{mycat} alone.")
+                if mh == "combined_task" and not spec.get("combined_outputs"):
+                    fail(f"merged_handling='combined_task' for '{lab}' needs "
+                         f"combined_outputs: which detector labels count as a hit "
+                         f"for the combined task. Absence of a {mycat} flag on a "
+                         f"non-{mycat} member of the merged class is NOT scored as "
+                         f"a {mycat} miss.")
     neg = cfg.get("negatives") or {}
-    if not neg.get("justified"):
-        print("NOTE: negatives.justified is False -> unlabeled text will NOT be "
-              "used as negative. False-alarm rate is not estimated and prevalence "
-              "correction is not attempted from this run.")
-    elif not neg.get("reason"):
+    mode = cfg.get("_mode", "full")
+    if mode == "full" and not neg.get("justified"):
+        fail("full evaluation is BLOCKED without justified negatives: unlabeled "
+             "text is not automatically negative. Either justify negatives "
+             "(negatives.justified=true with a reason tied to the corpus protocol) "
+             "or run --mode exploratory (flag rate on compatible positives only; "
+             "no precision/specificity/false-alarm; not used for prevalence).")
+    if neg.get("justified") and not neg.get("reason"):
         fail("negatives.justified is True but no reason tied to the corpus "
              "annotation protocol is given.")
 
@@ -188,6 +219,10 @@ def main():
     ap.add_argument("--config")
     ap.add_argument("--init", action="store_true", help="write a config skeleton and exit")
     ap.add_argument("--dry-run", action="store_true", help="check config + reader, no model calls")
+    ap.add_argument("--mode", choices=["full", "exploratory"], default="full",
+                    help="full needs justified negatives; exploratory reports flag "
+                         "rate on compatible positives only (no precision/specificity/"
+                         "false-alarm; not used for prevalence correction)")
     a = ap.parse_args()
     if a.init:
         json.dump(SKELETON, open("semeval_eval_config.json", "w"), indent=2)
@@ -196,7 +231,12 @@ def main():
     if not a.config:
         fail("pass --config semeval_eval_config.json (or --init to create one).")
     cfg = json.load(open(a.config, encoding="utf-8"))
+    cfg["_mode"] = a.mode
     check_config(cfg)
+    if a.mode == "exploratory":
+        print("MODE=exploratory: flag rate on compatible positives ONLY. This mode "
+              "does NOT report precision, specificity, or false-alarm rate, and is "
+              "NOT used for prevalence correction.")
     spans = read_2020(cfg) if cfg["edition"] == "2020" else read_2023(cfg)
     mapped = {}
     for mycat, spec in cfg["mapping"].items():
