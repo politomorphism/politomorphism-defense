@@ -4,6 +4,8 @@
 
 Reproducible code and working papers on detecting political manipulation as a **defensive** practice — detection, measurement, and explanation, never generation. The code only classifies and explains existing text.
 
+> **Where the research stands:** see [`STATUS.md`](STATUS.md) for a dated progress map — what is done, what is reported on author-built data, what is only proposed, and the next step.
+
 ## How to cite
 
 > Șerban, G. F. (2026). *A Leakage-Controlled Evaluation of Contextual and Lexical Models for Propaganda Classification.* Zenodo. https://doi.org/10.5281/zenodo.23884579
