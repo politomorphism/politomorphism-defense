@@ -171,27 +171,37 @@ def main():
         L.append(s); print(s)
 
     def block(sub, label):
-        tp = int(((sub.gold_false_dilemma == 1) & (sub.flag_fd == 1)).sum())
-        fn = int(((sub.gold_false_dilemma == 1) & (sub.flag_fd == 0)).sum())
-        fp = int(((sub.gold_false_dilemma == 0) & (sub.flag_fd == 1)).sum())
-        tn = int(((sub.gold_false_dilemma == 0) & (sub.flag_fd == 0)).sum())
+        # Abstentions are EXCLUDED from the confusion matrix (an abstention is not
+        # a decision, so it is neither a detection nor a correct rejection). The
+        # matrix is on DECIDED items; abstentions are reported separately with
+        # coverage. All totals therefore reconcile exactly.
+        dec = sub[sub.abstain == 0]
+        ab_pos = int(((sub.gold_false_dilemma == 1) & (sub.abstain == 1)).sum())
+        ab_neg = int(((sub.gold_false_dilemma == 0) & (sub.abstain == 1)).sum())
+        tp = int(((dec.gold_false_dilemma == 1) & (dec.flag_fd == 1)).sum())
+        fn = int(((dec.gold_false_dilemma == 1) & (dec.flag_fd == 0)).sum())
+        fp = int(((dec.gold_false_dilemma == 0) & (dec.flag_fd == 1)).sum())
+        tn = int(((dec.gold_false_dilemma == 0) & (dec.flag_fd == 0)).sum())
         prec = tp / (tp + fp) if (tp + fp) else float("nan")
         rec = tp / (tp + fn) if (tp + fn) else float("nan")
         f1 = 2 * prec * rec / (prec + rec) if (prec and rec) else float("nan")
-        spec = tn / (tn + fp) if (tn + fp) else float("nan")
-        lo, hi = boot_ci(list(zip(sub.gold_false_dilemma.tolist(), sub.flag_fd.tolist())), f1_stat)
-        e(f"[{label}]  n={len(sub)}  positives={tp+fn}  negatives={fp+tn}")
-        e(f"  TP={tp}  FP={fp}  FN={fn}  TN={tn}")
+        spec = tn / (tn + fp) if (tn + fp) else float("nan")  # on decided negatives
+        lo, hi = boot_ci(list(zip(dec.gold_false_dilemma.tolist(), dec.flag_fd.tolist())), f1_stat)
+        cov = len(dec) / len(sub) if len(sub) else float("nan")
+        e(f"[{label}]  n={len(sub)}  positives={tp+fn+ab_pos}  negatives={fp+tn+ab_neg}")
+        e(f"  DECIDED-item confusion (abstentions excluded):")
+        e(f"    TP={tp}  FP={fp}  FN={fn}  TN={tn}   (decided={tp+fp+fn+tn})")
         e(f"  precision={prec:.3f}  recall={rec:.3f}  F1={f1:.3f}  [95% CI {lo:.3f}-{hi:.3f}]")
-        e(f"  specificity-vs-other-fallacies={spec:.3f}")
-        e(f"  abstentions: on positives={int(((sub.gold_false_dilemma==1)&(sub.abstain==1)).sum())} "
-          f"on negatives={int(((sub.gold_false_dilemma==0)&(sub.abstain==1)).sum())} (kept separate)")
-        conf = sub[(sub.gold_false_dilemma == 0) & (sub.flag_fd == 1)]
+        e(f"  specificity on decided negatives={spec:.3f}  ({tn}/{tn+fp})")
+        e(f"  abstentions (separate): positives={ab_pos}  negatives={ab_neg}  "
+          f"coverage={cov:.3f} ({len(dec)}/{len(sub)})")
+        conf = dec[(dec.gold_false_dilemma == 0) & (dec.flag_fd == 1)]
         if len(conf):
             from collections import Counter
-            e(f"  false FD-flags land on: {dict(Counter(conf.source_label))}")
+            e(f"  false FD-flags land on: {dict(Counter(conf.source_label))} "
+              f"(candidates for qualitative analysis, not an established overlap)")
         if (tp + fn) < 25:
-            e(f"  NOTE: only {tp+fn} positives here -> sensitivity estimate is unstable.")
+            e(f"  NOTE: only {tp+fn} decided positives here -> sensitivity estimate unstable.")
         e()
 
     e("LOGIC false_dilemma evaluation (independent labels; Jin et al. 2022)")
@@ -200,7 +210,12 @@ def main():
     e("may be in the base model's PRETRAINING; independent-of-author is not")
     e("independent-of-model. SCOPE: negatives are OTHER-FALLACY sentences, not neutral")
     e("text, so 'specificity' is fallacy discrimination, NOT a neutral-text false-alarm")
-    e("rate, and this result does not feed the prevalence correction.\n")
+    e("rate, and this result does not feed the prevalence correction.")
+    e("COMPOSITION: the set is near-balanced with negatives sampled evenly per other")
+    e("fallacy type, so precision/F1 are not estimates of performance in a natural")
+    e("discourse stream. BOOTSTRAP: F1 95% CI from 2000 replicates, item-level")
+    e("resampling (items are independent sentences), no stratification; the matrix")
+    e("is on decided items so abstentions do not enter it.\n")
     # Report the pooled set and the official test split SEPARATELY.
     block(out, "pooled (all splits)" if not a.split else f"split={a.split}")
     if not a.split and "split" in out.columns and (out["split"] == "test").any():
