@@ -19,7 +19,8 @@ this code.
 | Negation verifier (attributable, equivalence-only) | **Done**, reported on author-built data |
 | Study 2 (controlled structure/negation diagnostic) | **Built & frozen**; not yet run by the author |
 | Prevalence / utility and measurement-error correction (Rogan-Gladen) | **Done** as formulation + simulation; not empirically calibrated |
-| SemEval external-evaluation tooling | **Ready**; corpus not yet obtained |
+| **First external-label result — false_dilemma vs LOGIC (Jin et al. 2022)** | **Done (2026-11-07)** — F1 **0.895** [95% CI 0.855–0.929], precision 0.922, recall 0.869 on 137 independent-label positives; scope: fallacy-discrimination, not neutral-text false-alarm |
+| External-evaluation tooling (inspect + guarded eval) | **Ready**; SemEval corpus is registration-walled, so LOGIC (openly hosted) was used for false_dilemma |
 | Target-domain calibration (real r_k, f_k) | **Pending** — not demonstrated |
 | Integrated dynamic engine (forecasting equation) | **Proposed** in pre-registration; no validated predictive performance |
 | Romanian-language arm | Set aside for now |
