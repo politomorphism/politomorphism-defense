@@ -15,9 +15,13 @@ Two tests:
       contrastive instrument truly isolates structure, the lexical model should
       do much worse than the detector here.
 
-Honest note: a lexical baseline doing WELL is not a bug in the baseline; it is
-evidence about what the evaluation can and cannot prove (cf. Vamvas & Sennrich,
-2021, on lexical leakage in minimal-pair evaluation).
+CAVEAT (from a second review): the lexical baseline is SUPERVISED (trained via
+CV) while the detector is zero-shot, so the two scores are different protocols,
+not a clean head-to-head; grouped-CV on pairs may also leak templates across
+folds. Treat the lexical numbers as evidence that the TASK is largely lexically
+separable, not as "lexical beats the detector". What stands cleanly: LOGIC is
+lexically separable (0.852 supervised), and the detector's OWN contrastive pair
+accuracy is only 0.60. (cf. Vamvas & Sennrich 2021 on minimal-pair leakage.)
 """
 import csv, os
 import numpy as np
