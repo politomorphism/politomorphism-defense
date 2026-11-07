@@ -158,15 +158,6 @@ def main():
     out = pd.DataFrame(rows)
     out.to_csv(os.path.join(here, "logic_fd_predictions.csv"), index=False)
 
-    tp = int(((out.gold_false_dilemma == 1) & (out.flag_fd == 1)).sum())
-    fn = int(((out.gold_false_dilemma == 1) & (out.flag_fd == 0)).sum())
-    fp = int(((out.gold_false_dilemma == 0) & (out.flag_fd == 1)).sum())
-    tn = int(((out.gold_false_dilemma == 0) & (out.flag_fd == 0)).sum())
-    prec = tp / (tp + fp) if (tp + fp) else float("nan")
-    rec = tp / (tp + fn) if (tp + fn) else float("nan")
-    f1 = 2 * prec * rec / (prec + rec) if (prec and rec) else float("nan")
-    spec = tn / (tn + fp) if (tn + fp) else float("nan")
-    pairs = list(zip(out.gold_false_dilemma.tolist(), out.flag_fd.tolist()))
     def f1_stat(s):
         t = sum(1 for g, p in s if g == 1 and p == 1)
         fpv = sum(1 for g, p in s if g == 0 and p == 1)
@@ -174,29 +165,46 @@ def main():
         pr = t / (t + fpv) if (t + fpv) else 0
         rc = t / (t + fnv) if (t + fnv) else 0
         return 2 * pr * rc / (pr + rc) if (pr + rc) else float("nan")
-    lo, hi = boot_ci(pairs, f1_stat)
 
     L = []
     def e(s=""):
         L.append(s); print(s)
+
+    def block(sub, label):
+        tp = int(((sub.gold_false_dilemma == 1) & (sub.flag_fd == 1)).sum())
+        fn = int(((sub.gold_false_dilemma == 1) & (sub.flag_fd == 0)).sum())
+        fp = int(((sub.gold_false_dilemma == 0) & (sub.flag_fd == 1)).sum())
+        tn = int(((sub.gold_false_dilemma == 0) & (sub.flag_fd == 0)).sum())
+        prec = tp / (tp + fp) if (tp + fp) else float("nan")
+        rec = tp / (tp + fn) if (tp + fn) else float("nan")
+        f1 = 2 * prec * rec / (prec + rec) if (prec and rec) else float("nan")
+        spec = tn / (tn + fp) if (tn + fp) else float("nan")
+        lo, hi = boot_ci(list(zip(sub.gold_false_dilemma.tolist(), sub.flag_fd.tolist())), f1_stat)
+        e(f"[{label}]  n={len(sub)}  positives={tp+fn}  negatives={fp+tn}")
+        e(f"  TP={tp}  FP={fp}  FN={fn}  TN={tn}")
+        e(f"  precision={prec:.3f}  recall={rec:.3f}  F1={f1:.3f}  [95% CI {lo:.3f}-{hi:.3f}]")
+        e(f"  specificity-vs-other-fallacies={spec:.3f}")
+        e(f"  abstentions: on positives={int(((sub.gold_false_dilemma==1)&(sub.abstain==1)).sum())} "
+          f"on negatives={int(((sub.gold_false_dilemma==0)&(sub.abstain==1)).sum())} (kept separate)")
+        conf = sub[(sub.gold_false_dilemma == 0) & (sub.flag_fd == 1)]
+        if len(conf):
+            from collections import Counter
+            e(f"  false FD-flags land on: {dict(Counter(conf.source_label))}")
+        if (tp + fn) < 25:
+            e(f"  NOTE: only {tp+fn} positives here -> sensitivity estimate is unstable.")
+        e()
+
     e("LOGIC false_dilemma evaluation (independent labels; Jin et al. 2022)")
-    e(f"model={a.model}  n={len(out)}  positives={tp+fn}  negatives={fp+tn}  "
-      f"split={a.split or 'all'}")
-    e("SCOPE: negatives are OTHER-FALLACY sentences, not neutral text. 'Specificity'")
-    e("here is discrimination among fallacies; this is NOT a neutral-text false-alarm")
-    e("rate and does not feed the prevalence correction. Benchmark may be in the")
-    e("model's pretraining.\n")
-    e(f"  TP={tp}  FP={fp}  FN={fn}  TN={tn}")
-    e(f"  precision={prec:.3f}  recall={rec:.3f}  F1={f1:.3f}  [95% CI {lo:.3f}-{hi:.3f}]")
-    e(f"  specificity-vs-other-fallacies={spec:.3f}")
-    e(f"  abstentions: on positives={int(((out.gold_false_dilemma==1)&(out.abstain==1)).sum())} "
-      f"on negatives={int(((out.gold_false_dilemma==0)&(out.abstain==1)).sum())} "
-      f"(kept separate; never counted as detection or as correct rejection)")
-    # where do negatives get mislabelled as FD?
-    conf = out[(out.gold_false_dilemma == 0) & (out.flag_fd == 1)]
-    if len(conf):
-        from collections import Counter
-        e(f"  false FD-flags land on: {dict(Counter(conf.source_label))}")
+    e(f"model={a.model}")
+    e("CONTAMINATION: the detector was not trained on LOGIC, but LOGIC is public and")
+    e("may be in the base model's PRETRAINING; independent-of-author is not")
+    e("independent-of-model. SCOPE: negatives are OTHER-FALLACY sentences, not neutral")
+    e("text, so 'specificity' is fallacy discrimination, NOT a neutral-text false-alarm")
+    e("rate, and this result does not feed the prevalence correction.\n")
+    # Report the pooled set and the official test split SEPARATELY.
+    block(out, "pooled (all splits)" if not a.split else f"split={a.split}")
+    if not a.split and "split" in out.columns and (out["split"] == "test").any():
+        block(out[out["split"] == "test"], "official LOGIC test split")
     open(os.path.join(here, "logic_fd_report.txt"), "w").write("\n".join(L))
 
 
