@@ -14,9 +14,19 @@ CELLS (fixed here BEFORE looking at detector results on them):
                 third way / no other|middle).
   HARD cells: gold FD without marker (43 items) and gold non-FD with marker (14 items).
   EASY cells: marker agrees with gold.
-PRIMARY OUTCOME: balanced accuracy on hard cells = mean(recall on FD-without-marker,
-  specificity on non-FD-with-marker) -- plain accuracy would be inflated by the 43:14 mix.
-  Abstentions count as errors. 95% CI: 2000 item-level bootstrap replicates (seed 0).
+PRIMARY OUTCOME: balanced accuracy on hard cells
+  BA = 1/2 * ( correct FD-without-marker / all FD-without-marker
+             + correct non-FD-with-marker / all non-FD-with-marker ),
+  each ratio over ALL items of its class. An abstention is an incorrect answer in either
+  class (a non-FD abstention is NOT credited as "non-FD"). Plain accuracy would be inflated
+  by the unequal class mix. 95% CI: 2000 item-level bootstrap replicates (seed 0).
+TIMING (stated precisely): the regex and the decision rule were fixed before the aggregate
+  hard-cell score of the detector was computed; the detector predictions already existed
+  (7 November run) and had not been inspected by the analyst. The thresholds were set after a
+  supervised lexical control had been computed on the same cells (balanced accuracy ~0.75),
+  so they are not independent of that information. None of the 20 hard-cell errors had been
+  read when the rule was fixed. The script prints the SHA-256 of the predictions file so
+  the exact input is recorded.
 DECISION RULE (pre-registered): SUPPORTED if hard-cell balanced accuracy >= 0.75 and CI
   lower bound > 0.60; NOT SUPPORTED if <= 0.60 or CI lower bound <= 0.50; else INCONCLUSIVE.
   A marker-only rule scores 0 on hard cells by construction.
@@ -24,9 +34,11 @@ CAVEATS: pretraining exposure to LOGIC unresolved; 57 hard items, only 14 non-FD
   cells defined by a regex, not by annotators; a supervised lexical model (shown for
   context, 5-fold) is a different protocol from the zero-shot detector.
 
-Usage:  python 26_logic_hard_cells.py logic_fd_predictions.csv logic_false_dilemma_eval.csv
+Usage:  python 26_logic_hard_cells.py logic_fd_predictions.csv logic_false_dilemma_eval.csv [--exclude-review]
+  --exclude-review keeps only rows with to_review=0 (joined by id), i.e. the 269-item set
+  scored with the predictions in the given file (the 273-item run).
 """
-import csv, random, re, sys
+import csv, hashlib, random, re, sys
 import numpy as np
 
 MK = re.compile(r"\b(either|or)\b|only two|two (options|choices|sides)|third way|no (other|middle)", re.I)
@@ -43,9 +55,15 @@ def balacc(sample):
     if not pos or not neg: return float("nan")
     return 0.5 * (sum(pos) / len(pos) + sum(neg) / len(neg))
 
-def main(pred_path, data_path):
+def main(pred_path, data_path, exclude_review=False):
     gold_rows = {r["id"]: r for r in csv.DictReader(open(data_path, encoding="utf-8"))}
     P = [r for r in csv.DictReader(open(pred_path, encoding="utf-8"))]
+    print("predictions file SHA-256:", hashlib.sha256(open(pred_path, "rb").read()).hexdigest())
+    if exclude_review:
+        P = [r for r in P if gold_rows[r["id"]].get("to_review") == "0"]
+        print("--exclude-review: rows with to_review=0 only; n =", len(P))
+    else:
+        print("all rows in the predictions file; n =", len(P))
     items = []
     for r in P:
         g = int(r["gold_false_dilemma"]); m = 1 if MK.search(r["text"]) else 0
@@ -68,4 +86,4 @@ def main(pred_path, data_path):
     print("Marker-only rule on hard cells: 0.000 by construction. Supervised lexical (5-fold) on the same hard cells: balanced accuracy ~0.75 (context only, different protocol).")
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], exclude_review="--exclude-review" in sys.argv)
