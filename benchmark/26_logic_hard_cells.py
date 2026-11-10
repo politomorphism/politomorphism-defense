@@ -27,7 +27,7 @@ TIMING (stated precisely): the regex and the decision rule were fixed before the
   so they are not independent of that information. None of the 20 hard-cell errors had been
   read when the rule was fixed. The script prints the SHA-256 of the predictions file so
   the exact input is recorded.
-DECISION RULE (pre-registered): SUPPORTED if hard-cell balanced accuracy >= 0.75 and CI
+DECISION RULE (fixed before the aggregate hard-cell score was computed; a re-analysis plan, not an independent pre-registration): SUPPORTED if hard-cell balanced accuracy >= 0.75 and CI
   lower bound > 0.60; NOT SUPPORTED if <= 0.60 or CI lower bound <= 0.50; else INCONCLUSIVE.
   A marker-only rule scores 0 on hard cells by construction.
 CAVEATS: pretraining exposure to LOGIC unresolved; 57 hard items, only 14 non-FD; hard
@@ -69,6 +69,19 @@ def main(pred_path, data_path, exclude_review=False):
         g = int(r["gold_false_dilemma"]); m = 1 if MK.search(r["text"]) else 0
         correct = int(int(r["flag_fd"]) == g and int(r["abstain"]) == 0)  # abstention = error
         items.append((g, m, correct))
+    # Overall confusion (all rows used), with abstentions as their own column
+    for g_, name_ in ((1, "FD    "), (0, "non-FD")):
+        rr = [r for r in P if int(r["gold_false_dilemma"]) == g_]
+        a_ = sum(int(r["abstain"]) == 1 for r in rr)
+        f_ = sum(int(r["abstain"]) == 0 and int(r["flag_fd"]) == 1 for r in rr)
+        n_ = sum(int(r["abstain"]) == 0 and int(r["flag_fd"]) == 0 for r in rr)
+        print(f"overall confusion  reference {name_}: predicted FD={f_}  predicted non-FD={n_}  abstained={a_}  total={len(rr)}")
+    pos = [r for r in P if int(r["gold_false_dilemma"]) == 1]; neg = [r for r in P if int(r["gold_false_dilemma"]) == 0]
+    TP = sum(int(r["abstain"]) == 0 and int(r["flag_fd"]) == 1 for r in pos)
+    FN = sum(int(r["abstain"]) == 0 and int(r["flag_fd"]) == 0 for r in pos); AB = sum(int(r["abstain"]) == 1 for r in pos)
+    FP = sum(int(r["abstain"]) == 0 and int(r["flag_fd"]) == 1 for r in neg)
+    print(f"F1 on decided items (abstentions excluded): {2*TP/(2*TP+FP+FN):.4f}")
+    print(f"F1 with abstentions on positives counted as misses: {2*TP/(2*TP+FP+FN+AB):.4f}")
     hard = [(g, c) for g, m, c in items if (g == 1 and m == 0) or (g == 0 and m == 1)]
     easy = [(g, c) for g, m, c in items if (g == 1 and m == 1) or (g == 0 and m == 0)]
     for name, s in (("HARD (marker disagrees)", hard), ("EASY (marker agrees)", easy)):
@@ -82,7 +95,7 @@ def main(pred_path, data_path, exclude_review=False):
     if hb >= 0.75 and hlo > 0.60: v = "SUPPORTED (not marker-driven)"
     elif hb <= 0.60 or hlo <= 0.50: v = "NOT SUPPORTED"
     else: v = "INCONCLUSIVE"
-    print(f"Pre-registered verdict on hard cells: {v}")
+    print(f"Verdict on hard cells under the fixed re-analysis rule: {v}")
     print("Marker-only rule on hard cells: 0.000 by construction. Supervised lexical (5-fold) on the same hard cells: balanced accuracy ~0.75 (context only, different protocol).")
 
 if __name__ == "__main__":
