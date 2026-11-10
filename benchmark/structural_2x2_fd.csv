@@ -1,0 +1,57 @@
+id,cell,gold_false_dilemma,marker,text
+A01,A,1,1,Either we cut every social program or the country goes bankrupt.
+A02,A,1,1,You either support the new security law or you stand with the criminals.
+A03,A,1,1,There are only two options: accept the treaty as written or watch our industry die.
+A04,A,1,1,Either the mayor resigns today or the city descends into chaos.
+A05,A,1,1,"We can have open borders or a safe nation, and there is no third way."
+A06,A,1,1,It is either lower taxes for everyone or total economic collapse.
+A07,A,1,1,Voters must choose: the party of order or the party of anarchy.
+A08,A,1,1,Either you back the president's plan or you want the nation to fail.
+A09,A,1,1,The choice is simple: raise tariffs or lose every factory we have.
+A10,A,1,1,Either parliament approves this reform now or our democracy is finished.
+A11,A,1,1,You are either with the farmers or you are with the foreign corporations.
+A12,A,1,1,There are only two kinds of people: patriots and traitors.
+A13,A,1,1,Either we ban the protest or we accept violence in our streets.
+A14,A,1,1,It's liberty or security; no sensible person can want both.
+B01,B,1,0,Anyone who questions the budget wants the schools to burn.
+B02,B,1,0,Whoever opposes this bill sides with the traffickers.
+B03,B,1,0,"If you are not backing the strike, you have already sold out the workers."
+B04,B,1,0,Criticize the minister and you are cheering for the enemy.
+B05,B,1,0,Those who doubt the war effort are working for the other side.
+B06,B,1,0,Question the vaccine rollout and you clearly want people to die.
+B07,B,1,0,Refuse to sign the petition and you have picked the oligarchs.
+B08,B,1,0,A senator who votes no on this is a friend of the cartels.
+B09,B,1,0,Not supporting the border wall means you endorse illegal crime.
+B10,B,1,0,Disagree with the central bank and you are rooting for inflation.
+B11,B,1,0,"Skeptics of the pipeline are, plainly, enemies of working families."
+B12,B,1,0,"If you do not march with us tomorrow, you have chosen the regime."
+B13,B,1,0,Reject the curfew and you accept the looting.
+B14,B,1,0,Oppose the merger and you have decided that jobs do not matter.
+C01,C,0,1,"Either the bill is signed by Friday or the agency loses its funding, as the statute requires."
+C02,C,0,1,The referendum result is either yes or no; abstentions are not counted.
+C03,C,0,1,A defendant is either convicted or acquitted at the end of a trial.
+C04,C,0,1,Parliament can either pass the amendment or send it back to committee under standing orders.
+C05,C,0,1,Either the candidate files the form by the deadline or her name stays off the ballot.
+C06,C,0,1,The coin lands either heads or tails.
+C07,C,0,1,Only two senators represent each state in the US Senate.
+C08,C,0,1,The motion either carries or fails once the vote is tallied.
+C09,C,0,1,A bill is either law or it is not; it cannot be partly enacted.
+C10,C,0,1,"The ministry offers either a cash grant or a tax credit, and applicants may also combine them."
+C11,C,0,1,Voters could choose either of the two runoff candidates or spoil the ballot.
+C12,C,0,1,Either the court rules this week or the hearing is rescheduled to January.
+C13,C,0,1,There are only two chambers in the national legislature.
+C14,C,0,1,The contract is either renewed or it expires on 31 December.
+D01,D,0,0,The council debated several proposals for the new budget before adjourning.
+D02,D,0,0,The opposition criticized the plan and suggested a range of alternatives.
+D03,D,0,0,Economists disagree about how much the policy will cost over ten years.
+D04,D,0,0,The minister said the reform would take effect in January.
+D05,D,0,0,"Residents raised concerns about traffic, noise and the cost of the project."
+D06,D,0,0,The party presented its manifesto at a conference in the capital.
+D07,D,0,0,Analysts expect inflation to ease gradually through next year.
+D08,D,0,0,Several unions and employers' groups were consulted on the draft law.
+D09,D,0,0,The committee will publish its findings after reviewing the testimony.
+D10,D,0,0,Turnout in the municipal election was higher than in the last cycle.
+D11,D,0,0,The government outlined three possible approaches and asked for public comment.
+D12,D,0,0,Opinions in the coalition differ on how fast to proceed with the reform.
+D13,D,0,0,"The report lists health, housing and transport as the main priorities."
+D14,D,0,0,Lawmakers will vote on the proposal after the summer recess.
