@@ -35,14 +35,14 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import LeaveOneOut, LeaveOneGroupOut
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "structural_2x2_fd.csv")
 
 
-def load():
-    return list(csv.DictReader(open(DATA, encoding="utf-8")))
+def load(path=None):
+    return list(csv.DictReader(open(path or DATA, encoding="utf-8")))
 
 
 def boot_ci(correct, reps=2000, seed=0):
@@ -71,7 +71,14 @@ def report(name, pred, rows):
 def lexical(rows):
     X = [r["text"] for r in rows]; y = np.array([int(r["gold_false_dilemma"]) for r in rows])
     pred = np.zeros(len(y), int)
-    for tr, te in LeaveOneOut().split(X):
+    # v2 sets carry a topic column: hold out whole topics (all 4 cells) so topic
+    # vocabulary cannot be learned across folds. v1 has no topic: plain LOO.
+    if "topic" in rows[0]:
+        splits = LeaveOneGroupOut().split(X, y, [r["topic"] for r in rows])
+        print("Lexical control: held-out TOPICS (leave-one-topic-out).")
+    else:
+        splits = LeaveOneOut().split(X)
+    for tr, te in splits:
         c = make_pipeline(TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True),
                           LogisticRegression(max_iter=1000, class_weight="balanced"))
         c.fit([X[i] for i in tr], y[tr]); pred[te] = c.predict([X[i] for i in te])
@@ -109,7 +116,8 @@ if __name__ == "__main__":
     ap.add_argument("--lexical", action="store_true")
     ap.add_argument("--detector", action="store_true")
     ap.add_argument("--model", default="gpt-4o-mini")
-    a = ap.parse_args(); rows = load()
+    ap.add_argument("--data", default=None)
+    a = ap.parse_args(); rows = load(a.data)
     if a.lexical or not a.detector:
         lexical(rows)
     if a.detector:

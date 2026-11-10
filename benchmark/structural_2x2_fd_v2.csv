@@ -1,0 +1,57 @@
+id,topic,cell,gold_false_dilemma,marker,text
+A_pension,pension,A,1,1,Either we pass the pension reform this year or the state goes bankrupt.
+B_pension,pension,B,1,0,A vote against the pension reform is a vote to bankrupt the state.
+C_pension,pension,C,0,1,"Either the pension reform is promulgated within 20 days or it returns to parliament, as the constitution provides."
+D_pension,pension,D,0,0,"The pension reform was debated for three days, and the committee proposed several amendments."
+A_water,water,A,1,1,Water is either privatized or the taps run dry; there is no third way.
+B_water,water,B,1,0,Whoever defends public water utilities wants the taps to run dry.
+C_water,water,C,0,1,The water utility is either owned by the municipality or by a private concessionaire; the register lists which.
+D_water,water,D,0,0,The council commissioned a study of how the water utility could be financed and managed.
+A_fence,fence,A,1,1,We either build the border fence or surrender the country to criminals.
+B_fence,fence,B,1,0,Opposing the border fence means inviting criminals to walk in.
+C_fence,fence,C,0,1,"The fence section is either on state land or on private land, and the survey records which."
+D_fence,fence,D,0,0,Border officials described the planned fence as one measure among several under review.
+A_energy,energy,A,1,1,It's the energy tax or blackouts; those are the only two possibilities.
+B_energy,energy,B,1,0,Anyone who refuses the energy tax has chosen blackouts for our children.
+C_energy,energy,C,0,1,"The energy tax is levied either per kilowatt-hour or as a flat monthly fee, depending on the contract."
+D_energy,energy,D,0,0,The ministry published a table showing how the energy tax would affect different households.
+A_curfew,curfew,A,1,1,Either we impose the curfew or the streets belong to the gangs.
+B_curfew,curfew,B,1,0,Teachers who question the curfew have decided the gangs should win the streets.
+C_curfew,curfew,C,0,1,"The curfew applies either from 22:00 or from midnight, depending on the district."
+D_curfew,curfew,D,0,0,Residents' associations gave mixed reactions to the proposed curfew at the hearing.
+A_vaccine,vaccine,A,1,1,You are either for the vaccine mandate or you are for the next epidemic.
+B_vaccine,vaccine,B,1,0,"Skeptics of the vaccine mandate are, plainly, rooting for the next epidemic."
+C_vaccine,vaccine,C,0,1,"Under the rules, staff are either vaccinated or must present a negative test."
+D_vaccine,vaccine,D,0,0,The health board asked clinics to report uptake figures before the mandate review.
+A_housing,housing,A,1,1,Either landlords are forced to cut rents or families sleep on the street.
+B_housing,housing,B,1,0,A senator who will not back the housing law has abandoned every family that rents.
+C_housing,housing,C,0,1,A tenant can either renew the lease or leave on the date stated in the contract.
+D_housing,housing,D,0,0,The housing law adds notice periods and a registry of rental contracts.
+A_defense,defense,A,1,1,We either raise defense spending to three percent or we leave our borders open to invasion.
+B_defense,defense,B,1,0,Cut a single euro from the defense budget and you hand the country to its enemies.
+C_defense,defense,C,0,1,The budget is either approved by 31 December or the government continues under provisional rules.
+D_defense,defense,D,0,0,Analysts compared the defense budget with previous years and with neighboring states.
+A_media,media,A,1,1,Either the media law passes or lies will rule the airwaves.
+B_media,media,B,1,0,Journalists who object to the media law have taken the side of the liars.
+C_media,media,C,0,1,The regulator can either grant a license or refuse it in writing within thirty days.
+D_media,media,D,0,0,The draft media law sets out licensing procedures and complaint mechanisms.
+A_wage,wage,A,1,1,"It's a higher minimum wage or mass poverty, and nothing in between."
+B_wage,wage,B,1,0,Employers who resist the wage increase want workers to starve.
+C_wage,wage,C,0,1,"The minimum wage is set either by government decree or, failing that, by the statutory formula."
+D_wage,wage,D,0,0,The wage commission will meet in March to review the minimum wage.
+A_steel,steel,A,1,1,We either tax foreign steel or we lose every steelworker's job.
+B_steel,steel,B,1,0,Free-trade advocates are happy to see the steel towns die.
+C_steel,steel,C,0,1,Imports of steel are either subject to the tariff or covered by an exemption listed in the annex.
+D_steel,steel,D,0,0,"Steel producers, unions and importers submitted written comments on the proposed tariff."
+A_data,data,A,1,1,Either the police get full access to our phones or terrorists win.
+B_data,data,B,1,0,Privacy campaigners have decided that terrorists deserve protection.
+C_data,data,C,0,1,"Data are retained either for six months or, with a court order, for twelve."
+D_data,data,D,0,0,The data-retention law sets storage periods and defines who may request access.
+A_strike,strike,A,1,1,Either the strikers go back to work on Monday or the city is paralyzed forever.
+B_strike,strike,B,1,0,The union leaders who keep the strike going want the city to burn.
+C_strike,strike,C,0,1,"The strike is either lawful or unlawful depending on whether notice was given, and the court will decide."
+D_strike,strike,D,0,0,Commuters used alternative routes while negotiations continued through the weekend.
+A_forest,forest,A,1,1,It is either total protection for the forest or logging to the last tree.
+B_forest,forest,B,1,0,Anyone who allows a single permit in the forest is the enemy of nature.
+C_forest,forest,C,0,1,"A permit for the forest is either issued by the regional office or by the national agency, according to plot size."
+D_forest,forest,D,0,0,The forest act classifies plots by size and lists the activities allowed in each.
