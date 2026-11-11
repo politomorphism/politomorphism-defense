@@ -17,3 +17,6 @@ data/
 .DS_Store
 Thumbs.db
 .vscode/
+# CoCoLoFa comment text for the pre-registered test: local only, never re-hosted.
+benchmark/cocolofa_fd_eval_local.csv
+external/
