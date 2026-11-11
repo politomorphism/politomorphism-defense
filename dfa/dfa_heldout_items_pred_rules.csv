@@ -1,0 +1,29 @@
+item_id,pair_id,member,gold_category,gold_dependency,text,note,pred,fragment,dfa_area,dfa_ref,requires_verification
+X01a,X01,problematic,confirmshaming,text,"Nope, I'm fine missing out on exclusive deals.",refusal button mocks the user,none,,,,False
+X01b,X01,control,none,text,Don't subscribe to the newsletter.,neutral refusal,none,,,,False
+X02a,X02,problematic,false_urgency_scarcity,external,Selling fast: 87% of seats on this flight are already booked!,popularity pressure whose truth is outside the text,none,,,,False
+X02b,X02,control,none,text,Seat availability on this flight is updated every few minutes.,no pressure,none,,,,False
+X03a,X03,problematic,trial_auto_conversion,text,Your 30-day trial rolls into a paid annual subscription (€59.90) unless you opt out beforehand.,opt-out conversion,none,,,,False
+X03b,X03,control,none,text,Your 30-day trial ends on its own; to keep the service you can choose the annual subscription (€59.90).,ends without action,none,,,,False
+X04a,X04,problematic,obstructed_cancellation,text,Memberships can be terminated by fax or in person at any of our branches.,no online route,none,,,,False
+X04b,X04,control,none,text,Memberships can be terminated in your account under 'My contract' or at any of our branches.,online route,none,,,,False
+X05a,X05,problematic,drip_pricing,text,Rooms at €79 per night. A resort fee of €25 per night applies and is payable on arrival.,mandatory fee outside headline price,none,,,,False
+X05b,X05,control,none,text,"Rooms at €104 per night, resort fee included.",all-in,none,,,,False
+X06a,X06,problematic,undisclosed_influencer_ad,text,My new favourite sneakers 🔥 swipe up and save 15% with GABI15,promo code without disclosure,none,,,,False
+X06b,X06,control,none,text,Advertisement: my new favourite sneakers from Stride 🔥 save 15% with GABI15,disclosed,none,,,,False
+X07a,X07,problematic,virtual_currency_opacity,text,"Unlock the Season Pass for 1,000 Crowns.",virtual price only,none,,,,False
+X07b,X07,control,none,text,"Unlock the Season Pass for 1,000 Crowns (€9.99).",real money shown,none,,,,False
+X08a,X08,problematic,undisclosed_variable_reward,text,Each Card Pack contains 5 random players — will you pull a superstar?,paid random reward without odds,none,,,,False
+X08b,X08,control,none,text,Each Card Pack contains 5 random players; superstar pull rate: 1 in 200 packs.,odds disclosed,none,,,,False
+X09a,X09,problematic,no_human_contact,text,Billing disputes are resolved exclusively through our automated help centre.,no human,none,,,,False
+X09b,X09,control,none,text,Billing disputes can be raised in our automated help centre or with a member of our team.,human route,none,,,,False
+X10a,X10,problematic,minor_targeted_monetisation,text,Hey young heroes! Grab the Power Sword and crush every boss — tell your parents it's only €4.99!,child-directed pay-to-win,none,,,,False
+X10b,X10,control,none,text,The Power Sword is available to players aged 18+; purchases by minors need parental consent.,age-gated,none,,,,False
+Y01,,hard,none,text,"Our cancellation page is one click away; no calls, no letters needed.",negated obstruction with obstruction words,none,,,,False
+Y02,,hard,none,text,A consumer association reported that the game sold loot boxes without showing the odds.,reported practice,none,,,,False
+Y03,,hard,none,text,"Sale ends Sunday, 30 November, at midnight.",genuine fixed deadline,none,,,,False
+Y04,,hard,none,text,"Paid partnership with Stride · use code GABI15 at checkout, link in bio.",disclosed but has promo and link cues,none,,,,False
+Y05,,hard,none,text,"The proposal would require traders to show the euro value of in-game currencies such as 1,000 Crowns.",policy description,none,,,,False
+Y06,,hard,trial_auto_conversion,text,"After the introductory month, the standard monthly fee will be charged to your saved payment method.",inverse: calm wording for auto-conversion,none,,,,False
+Y07,,hard,undisclosed_influencer_ad,text,Been using this protein bar every morning — it genuinely changed my routine. You'll find it in my shop.,inverse: no code or link cue,none,,,,False
+Y08,,hard,confirmshaming,text,Continue unprotected,inverse: two-word shaming opt-out,none,,,,False

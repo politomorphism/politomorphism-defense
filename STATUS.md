@@ -24,6 +24,7 @@ this code.
 | Target-domain calibration (real r_k, f_k) | **Pending** — not demonstrated |
 | Integrated dynamic engine (forecasting equation) | **Proposed** in pre-registration; no validated predictive performance |
 | Romanian-language arm | Set aside for now |
+| **DFA component** (`dfa/`, added 2026-11-11) — consumer-protection practices named by the EU Digital Fairness Act proposal | **Built**; lexical rules baseline run on author-built dev and held-out sets (dev 24/24 in-sample, held-out 0/13 — does not generalise); LLM backends not yet run; article refs follow the leaked draft, not yet checked against the official COM text |
 
 ## Implementation map (component → script → input → output → test)
 

@@ -1,0 +1,51 @@
+item_id,pair_id,member,gold_category,gold_dependency,text,note
+D01a,D01,problematic,confirmshaming,text,"No thanks, I'd rather keep paying full price.",opt-out wording shames the refusal
+D01b,D01,control,none,text,"No thanks, maybe later.",neutral opt-out
+D02a,D02,problematic,confirmshaming,text,"I don't care about protecting my family — skip insurance.",refusal framed as moral failure
+D02b,D02,control,none,text,"Skip insurance for this order.",neutral opt-out
+D03a,D03,problematic,false_urgency_scarcity,external,"Hurry! Only 2 rooms left at this price — 14 people are looking right now.",truth of stock and viewer count not visible in text
+D03b,D03,control,none,text,"2 rooms at this price are currently shown as available.",plain availability statement
+D04a,D04,problematic,false_urgency_scarcity,external,"This deal disappears in 09:59 — don't miss out!",countdown may or may not be genuine
+D04b,D04,control,none,text,"This price is valid until 30 November.",fixed verifiable deadline
+D05a,D05,problematic,trial_auto_conversion,text,"Start your free trial — after 7 days it continues automatically at €12.99/month.",paid conversion without active acceptance
+D05b,D05,control,none,text,"Start your free trial — after 7 days we'll ask whether you want to continue at €12.99/month.",active acceptance before conversion
+D06a,D06,problematic,trial_auto_conversion,text,"By tapping 'Claim gift' you agree to a yearly plan billed after your trial.",gift framing hides paid commitment
+D06b,D06,control,none,text,"Tapping 'Claim gift' starts a free trial; no plan is billed unless you choose one.",no billing without choice
+D07a,D07,problematic,obstructed_cancellation,text,"To cancel your membership, please call our hotline (Mon–Fri, 10:00–12:00) or send a registered letter.",no online termination route
+D07b,D07,control,none,text,"To cancel your membership, use the Cancel button in Settings, or call our hotline.",online route available
+D08a,D08,problematic,obstructed_cancellation,text,"Cancellations are only possible in writing, 3 months before the renewal date.",written-only and long notice
+D08b,D08,control,none,text,"You can cancel at any time with one month's notice, online.",online and short notice
+D09a,D09,problematic,drip_pricing,text,"Flights from €19* (*plus taxes, service and payment fees shown at checkout)",mandatory fees deferred to checkout
+D09b,D09,control,none,text,"Flight: €19 fare + €24 taxes and fees = €43 total.",total price up front
+D10a,D10,problematic,drip_pricing,text,"Tickets €45 — booking fee, venue fee and delivery added at the final step.",mandatory fees deferred
+D10b,D10,control,none,text,"Tickets €45 including booking, venue and delivery fees.",all-in price
+D11a,D11,problematic,undisclosed_influencer_ad,text,"Honestly obsessed with this serum 😍 use my code ANA20 for 20% off, link in bio!",commercial link without disclosure
+D11b,D11,control,none,text,"Ad · Paid partnership with Lumina: I'm using this serum — code ANA20 gives 20% off.",disclosed partnership
+D12a,D12,problematic,undisclosed_influencer_ad,text,"Can't believe how fast this blender is, grab yours with the link below 👇",affiliate push without disclosure
+D12b,D12,control,none,text,"Sponsored by Vortex: this blender is fast, and the affiliate link below earns me a commission.",disclosed sponsorship and affiliate
+D13a,D13,problematic,virtual_currency_opacity,text,"Legendary skin: 950 Gems.",price shown only in virtual currency
+D13b,D13,control,none,text,"Legendary skin: 950 Gems (≈ €7.90).",real-money value shown
+D14a,D14,problematic,virtual_currency_opacity,text,"Special offer: 1,200 Gems + 300 bonus Gems!",bundle without real-money value
+D14b,D14,control,none,text,"Special offer: 1,200 Gems + 300 bonus Gems for €9.99 (about €0.67 per 100 Gems).",real-money value and unit price
+D15a,D15,problematic,undisclosed_variable_reward,text,"Open a Mystery Chest for a chance to win legendary weapons!",paid chance mechanism without odds
+D15b,D15,control,none,text,"Open a Mystery Chest: legendary weapon 0.8%, rare 9%, common 90.2%.",odds disclosed
+D16a,D16,problematic,undisclosed_variable_reward,text,"Spin the Lucky Wheel — 500 coins per spin, huge prizes await!",odds and real price absent
+D16b,D16,control,none,text,"Spin the Lucky Wheel — 500 coins (€0.99) per spin; the odds of each prize are listed below.",price and odds disclosed
+D17a,D17,problematic,no_human_contact,text,"All support requests are handled by our virtual assistant.",no route to a human
+D17b,D17,control,none,text,"Our virtual assistant can help — type 'agent' at any time to reach a person.",human route available
+D18a,D18,problematic,no_human_contact,text,"For subscription questions, please use the chatbot; we do not offer phone or email support.",human contact excluded
+D18b,D18,control,none,text,"For subscription questions, use the chatbot or ask to be transferred to a staff member.",human route available
+D19a,D19,problematic,minor_targeted_monetisation,text,"Buy the Turbo Pass to beat your friends — ask mum or dad for their card!",direct purchase exhortation to a child
+D19b,D19,control,none,text,"The Turbo Pass is a cosmetic pack; purchases require a parent's approval.",parental gate and no advantage
+D20a,D20,problematic,minor_targeted_monetisation,text,"Kids, unlock the golden dragon now and be stronger than everyone in your class!",pay-to-win appeal to children
+D20b,D20,control,none,text,"Unlocking the golden dragon requires a parent's approval and changes only its appearance.",parental gate and cosmetic only
+H01,,hard,none,text,"We never turn your free trial into a paid plan without asking you first.",negated practice
+H02,,hard,none,text,"The regulator criticised apps that say 'No thanks, I'd rather pay full price' to shame users.",quoted and criticised by a third party
+H03,,hard,none,text,"Consumer groups say the airline advertised flights from €19* while adding fees at checkout.",news report about a practice
+H04,,hard,none,text,"Registration closes on 1 December at 23:59 CET.",genuine fixed deadline
+H05,,hard,none,text,"#ad I'm honestly obsessed with this serum — paid partnership with Lumina, code ANA20.",enthusiastic but disclosed
+H06,,hard,obstructed_cancellation,text,"Should you wish to end your plan, a written request may be posted to our head office.",inverse: mild words but no online route
+H07,,hard,drip_pricing,text,"The displayed amount excludes the mandatory service charge, which is calculated at payment.",inverse: calm wording but deferred mandatory fee
+H08,,hard,confirmshaming,text,"Continue without the safety bundle (not recommended for responsible parents).",inverse: subtle shaming
+H09,,hard,none,text,"Under the proposed rules, loot box odds must be disclosed before any purchase.",policy description
+H10,,hard,false_urgency_scarcity,external,"Only 3 left in stock.",scarcity claim whose truth is outside the text
