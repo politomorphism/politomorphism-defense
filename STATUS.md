@@ -1,6 +1,6 @@
 # Research status — where the project stands
 
-**Snapshot date:** 2026-11-06 · **Author:** Șerban, G. F. · ORCID [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
+**Snapshot date:** 2026-11-12 · **Author:** Șerban, G. F. · ORCID [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
 
 This file is a plain progress map: what exists as working code, what is reported
 on author-built data, what is only proposed, and what is still pending. It is an
@@ -23,8 +23,9 @@ this code.
 | External-evaluation tooling (inspect + guarded eval) | **Ready**; SemEval corpus is registration-walled, so LOGIC (openly hosted) was used for false_dilemma |
 | Target-domain calibration (real r_k, f_k) | **Pending** — not demonstrated |
 | Integrated dynamic engine (forecasting equation) | **Proposed** in pre-registration; no validated predictive performance |
-| Romanian-language arm | Set aside for now |
-| **DFA component** (`dfa/`, added 2026-11-11) — consumer-protection practices named by the EU Digital Fairness Act proposal | **Built**; lexical rules baseline run on author-built dev and held-out sets (dev 24/24 in-sample, held-out 0/13 — does not generalise); LLM backends not yet run; article refs follow the leaked draft, not yet checked against the official COM text |
+| **Pre-registered structural-sensitivity test — false_dilemma on CoCoLoFa** (Yeh et al. 2024; pre-registered 2026-11-11, commit 1bf76c6; one run 2026-11-12) | **Done — verdict INCONCLUSIVE.** Hard-cell balanced accuracy **0.664** [95% CI 0.599–0.719] (rule: supported ≥ 0.75 with lower bound > 0.60; not supported ≤ 0.60 or lower bound ≤ 0.50). Per cell: FD with marker 0.936, FD **without** marker 0.545, non-FD with marker 0.782, non-FD without marker 0.818. Descriptive reading: the marker rarely triggers false alarms, but detection drops sharply when the marker is absent (same pattern as LOGIC, 98% vs 62%). Writer-clustered CI 0.464–0.755; supervised lexical control 0.877. Files: `benchmark/cocolofa_fd_predictions.csv` (no text), `benchmark/cocolofa_fd_report.txt` |
+| Romanian-language arm | **Frozen** (2026-11-11) until the CoCoLoFa result is written up |
+| **DFA component** (`dfa/`, added 2026-11-11) — consumer-protection practices named by the EU Digital Fairness Act proposal | **Frozen** (2026-11-11). Built; lexical rules baseline on author-built dev and held-out sets (dev 24/24 in-sample, held-out 0/13 — does not generalise); gpt-4o-mini stage 1: dev detection 23/24 but false alarms 18/26, held-out 10/13 and 7/15; article refs follow the leaked draft, not yet checked against the official COM text |
 
 ## Implementation map (component → script → input → output → test)
 
@@ -72,8 +73,10 @@ labels, and any validated predictive performance of the integrated engine.
 
 ## Next step
 
-Obtain a public, independently annotated corpus to evaluate **one** category
-(`false_dilemma` vs SemEval `Black-and-White Fallacy`) and decide
-GO / CONDITIONAL-GO / NO-GO on real data. SemEval-2020 Task 11 appears to require
-registration/request with the organisers; an openly downloadable alternative that
-matches the definition is the fallback. Study 2 can run in parallel.
+One line only (decided 2026-11-11). Write up the pre-registered CoCoLoFa test as a
+short working paper, reporting the INCONCLUSIVE verdict as pre-registered and the
+marker asymmetry as a descriptive finding. No re-run or prompt change on the same
+sample: that would be tuning on the test. After the write-up, issue the corrections
+to earlier published papers once. Everything else (H1–H3, DFA, Romanian arm, engine
+components, book) stays frozen until then. A multi-model benchmark on this protocol
+would be a new study with its own pre-registration.

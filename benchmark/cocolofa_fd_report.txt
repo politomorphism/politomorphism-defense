@@ -1,0 +1,28 @@
+CoCoLoFa structural-sensitivity test, false_dilemma (pre-registered, one run)
+model=gpt-4o-mini  n=440
+sample manifest SHA-256: e35b540ec55962eb9de92b9887bd56647f563944b31050163c8fad531b2b9975
+predictions file SHA-256: 18f7d728a164dda147b07ec7245322b29162a7575da78c3ec1347c88826501d8
+
+Per cell (abstention counted as an error):
+  A  false dilemma, marker      (easy)  correct 103/110 = 0.936   abstained 0
+  B  false dilemma, no marker   (HARD)  correct 60/110 = 0.545   abstained 7
+  C  not FD, marker             (HARD)  correct 86/110 = 0.782   abstained 11
+  D  not FD, no marker          (easy)  correct 90/110 = 0.818   abstained 15
+     cell C, neutral ('none'): correct 42/55 = 0.764
+     cell C, other fallacy  : correct 44/55 = 0.800
+     cell D, neutral ('none'): correct 44/55 = 0.800
+     cell D, other fallacy  : correct 46/55 = 0.836
+
+PRIMARY  hard cells (B+C) balanced accuracy = 0.664  [95% CI 0.599-0.719]
+VERDICT under the pre-registered rule: INCONCLUSIVE
+
+Secondary, descriptive (do not change the verdict):
+  easy cells (A+D) balanced accuracy = 0.877  [95% CI 0.834-0.919]
+  hard cells, bootstrap clustered by writer: 95% CI 0.464-0.755
+  hard cells under the stricter marker (no bare 'or'): n=153 (FD 142, non-FD 11)  balanced accuracy = 0.621  [95% CI 0.467-0.769]
+  supervised lexical control on hard cells (TF-IDF+LR, 5-fold; different protocol, context only): balanced accuracy = 0.877  [95% CI 0.833-0.918]
+  marker-only rule on hard cells: 0.000 by construction.
+
+Limits: gold = the fallacy the writer was ASSIGNED to produce, not an independent
+reader's judgement; whole comments (median about 58 words) in a sentence-level
+prompt; cells defined by a regular expression; one model, one run.
