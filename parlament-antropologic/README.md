@@ -2,10 +2,13 @@
 
 `parlament_antropologic.py` citește lista oficială a proiectelor aflate în consultare
 publică la Senat (senat.ro), descarcă expunerea de motive a fiecăruia, o trimite unui
-model Gemini (nivel gratuit) pentru o lectură antropologică descriptivă — comunitatea
-imaginată, registrul simbolic, legitimarea și dispozitivele retorice, fiecare cu citat
-exact — verifică automat că fiecare citat există în textul sursă și scrie un raport Word
-în folderul `rapoarte/`.
+model Gemini (nivel gratuit) pentru o lectură antropologică descriptivă pe șaptesprezece
+variabile — comunitatea imaginată, granițele apartenenței, relația stat–cetățean,
+distribuția puterii, economia morală, temporalitatea, memoria, spațiul, corpul, registrul
+simbolic, resemnificarea termenilor, legitimarea, cunoașterea invocată, registrul afectiv,
+performativitatea, dispozitivele retorice și tăcerile textului — cu citat exact acolo unde
+e cazul. Programul verifică automat că fiecare citat există în textul sursă și scrie un
+raport Word în folderul `rapoarte/`, cu o matrice care compară proiectele între ele.
 
 Lectura este asistată de AI și descriptivă: nu spune dacă o lege este bună sau rea și nu
 evaluează inițiatori sau partide. Recunoașterea dispozitivelor retorice de către modele
