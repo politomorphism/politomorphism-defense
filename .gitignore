@@ -28,3 +28,8 @@ agent/outputs/
 .env
 agent/repo/
 agent/repo_tmp/
+
+# Senate reading tool: local cache and reports
+parlament-antropologic/cache/
+parlament-antropologic/rapoarte/
+parlament-antropologic/probe/
