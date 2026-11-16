@@ -27,6 +27,7 @@ Usage (from the folder that contains this file):
     python cpa_agent.py --ask "..."     ask one question and exit
     python cpa_agent.py --refresh       download the latest repository first
     python cpa_agent.py --dry-run       check setup and tools, call no model
+    python cpa_agent.py --model gemini-3.5-flash-lite   use another free model
 
 Settings (environment variables):
     GEMINI_API_KEY         your Gemini API key from Google AI Studio (required)
@@ -525,8 +526,24 @@ def write_report(title: str, body: str) -> str:
     return f"Saved: {out}"
 
 
-TOOLS = [list_files, read_file, read_document, search, file_sha256, check_hashes,
-         git_history, commit_files, rescore_predictions, write_report]
+def _with_progress(fn):
+    """Print each tool call so the user sees what the agent is doing."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        shown = ", ".join([repr(a)[:60] for a in args] + [f"{k}={str(v)[:60]!r}" for k, v in kwargs.items()])
+        print(f"  [tool] {fn.__name__}({shown})", flush=True)
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:          # a failing tool must not end the conversation
+            return f"Tool error: {exc}"
+    return wrapper
+
+
+TOOLS = [_with_progress(f) for f in (list_files, read_file, read_document, search, file_sha256,
+                                     check_hashes, git_history, commit_files, rescore_predictions,
+                                     write_report)]
 
 
 # --------------------------------------------------------------------------
@@ -546,7 +563,8 @@ def make_chat(client: Any) -> Any:
 
 
 def ask(chat: Any, question: str) -> str:
-    """Send one question; retry once after a pause if the free-tier limit is hit."""
+    """Send one question; retry after a pause if the model is busy or the limit is hit."""
+    print(f"[asking {MODEL} ...]", flush=True)
     for attempt in range(5):
         try:
             resp = chat.send_message(question)
@@ -564,7 +582,8 @@ def ask(chat: Any, question: str) -> str:
                 print(f"[free-tier limit reached; waiting {wait} seconds and trying again]", flush=True)
                 time.sleep(wait)
                 continue
-            if ("503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower()) and attempt < 4:
+            if any(k in msg for k in ("503", "UNAVAILABLE", "504", "DEADLINE", "timed out", "Timeout",
+                                      "ReadTimeout", "ConnectTimeout")) and attempt < 4:
                 wait = 20 * (attempt + 1)
                 print(f"[the model is busy at Google; waiting {wait} seconds and trying again]", flush=True)
                 time.sleep(wait)
@@ -604,7 +623,11 @@ def main() -> int:
     ap.add_argument("--ask", metavar="TEXT", help="ask one question and exit")
     ap.add_argument("--refresh", action="store_true", help="download the latest repository first")
     ap.add_argument("--dry-run", action="store_true", help="check setup and tools, call no model")
+    ap.add_argument("--model", help="Gemini model, for example gemini-3.5-flash-lite")
     args = ap.parse_args()
+    global MODEL
+    if args.model:
+        MODEL = args.model
 
     try:
         import requests  # noqa: F401
@@ -646,7 +669,11 @@ def main() -> int:
         print("The google-genai package is missing. Run:  python -m pip install --upgrade google-genai")
         return 1
 
-    client = genai.Client()
+    from google.genai import types
+
+    client = genai.Client(http_options=types.HttpOptions(
+        timeout=120_000,                                    # two minutes per request
+        retry_options=types.HttpRetryOptions(attempts=2)))  # our own loop retries further
     chat = make_chat(client)
     log: List[Dict[str, str]] = []
 
