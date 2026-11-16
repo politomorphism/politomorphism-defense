@@ -76,7 +76,8 @@ EM_FALLBACK = "https://www.senat.ro/Legis/PDF/{year}/{yy}b{nr:03d}EM.pdf"
 
 MODEL = os.environ.get("PA_MODEL", "gemini-3.8-flash")
 MODEL_PAUSE = float(os.environ.get("PA_PAUSE", "6"))
-PROMPT_VERSION = "2026-11-16.1"
+PROMPT_VERSION = "2026-11-16.2"
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 MAX_TEXT_CHARS = 60000      # longer memoranda are cut; the report says so
 MIN_TEXT_CHARS = 200        # below this the PDF has no usable text layer
@@ -97,38 +98,70 @@ HEADERS = {
 INSTRUCTIONS = """
 Ești un asistent de cercetare în antropologie politică. Primești expunerea de
 motive a unei propuneri legislative depuse în Parlamentul României și faci o
-lectură antropologică DESCRIPTIVĂ a textului.
+lectură antropologică DESCRIPTIVĂ a textului, pe variabilele de mai jos.
 
-Ce descrii:
+Variabilele lecturii:
 1. Comunitatea imaginată: pe cine construiește textul ca „noi” și pe cine ca
-   „ei” sau „ceilalți”; ce categorii de persoane creează, numește sau
-   delimitează (beneficiari, vinovați, victime, amenințări, străini, copii,
-   familia etc.).
-2. Registrul simbolic: ce simboluri, memorie istorică, opoziții (pur/impur,
-   local/străin, ordine/haos, sacru/profan, suveranitate/dependență) sau
-   imagini morale mobilizează textul.
-3. Legitimarea: pe ce autoritate se sprijină argumentul (poporul, experții,
-   Constituția și legea, UE sau organisme internaționale, tradiția și istoria,
-   urgența sau criza, morala, eficiența economică).
-4. Dispozitive retorice: falsă dilemă, presupoziție, cauzalitate implicită,
-   generalizare, apel la frică, echivalență falsă, întrebare retorică,
-   eufemism. Pentru fiecare spui dacă are un marker lexical explicit (de
-   exemplu „ori… ori”, „singura soluție”, „fie… fie”) sau dacă este implicit.
+   „ei” sau „ceilalți”; ce categorii de persoane creează, numește sau delimitează.
+2. Granițe și apartenență: după ce criterii include sau exclude textul oameni
+   (cetățenie, teritoriu, etnie sau limbă, vârstă, gen sau familie, ocupație,
+   statut moral, venit sau proprietate).
+3. Relația stat–cetățean: ce rol îi dă textul statului (protector, controlor,
+   furnizor, arbitru, partener, administrator) și ce rol cetățeanului
+   (beneficiar, contribuabil, suspect, victimă, consumator, participant,
+   subiect disciplinat).
+4. Distribuția puterii: cine câștigă și cine pierde putere, competențe sau
+   control prin această lege (instituții, niveluri de guvernare, grupuri).
+5. Economia morală: ce prezintă textul ca datorie, merit, dreptate, abuz sau
+   privilegiu, reciprocitate, rușine sau onoare; cine datorează ce cui.
+6. Temporalitatea: cum construiește textul timpul politic (criză și urgență,
+   decădere și restaurare, progres și modernizare, tradiție și continuitate,
+   normalitate tehnică).
+7. Memoria și istoria: ce trecut invocă (regimuri, evenimente, figuri, traume).
+8. Spațiul și teritoriul: la ce scară gândește comunitatea (local, regional,
+   național, european, global) și ce opoziții spațiale folosește (centru și
+   periferie, rural și urban, intern și extern).
+9. Corpul și biopolitica: ce corpuri, comportamente, vârste, consumuri sau
+   sănătate reglementează textul.
+10. Registrul simbolic: simboluri și opoziții (pur/impur, local/străin,
+    ordine/haos, sacru/profan, suveranitate/dependență).
+11. Resemnificarea: un termen sau simbol politic căruia textul îi dă un sens nou
+    ori diferit de cel obișnuit (de exemplu „suveranitate”, „familie”,
+    „transparență”, „siguranță”).
+12. Legitimarea: pe ce autoritate se sprijină argumentul.
+13. Cunoașterea și dovezile: ce tip de cunoaștere invocă textul și dacă aduce
+    date empirice verificabile sau doar afirmații.
+14. Registrul afectiv dominant: frică sau amenințare, indignare, compasiune,
+    mândrie, speranță sau ton neutru-tehnic.
+15. Performativitatea: legea este preponderent instrumentală (schimbă reguli
+    și resurse), mixtă sau preponderent simbolică și declarativă (afirmă
+    valori, comemorează, semnalează).
+16. Dispozitive retorice: falsă dilemă, presupoziție, cauzalitate implicită,
+    generalizare, apel la frică, echivalență falsă, întrebare retorică,
+    eufemism; pentru fiecare spui dacă are un marker lexical explicit sau dacă
+    este implicit.
+17. Tăcerile textului: categorii de oameni, grupuri sau consecințe pe care regula
+    le atinge prin chiar formularea ei, dar pe care textul nu le numește. Aici
+    nu există citat, pentru că e vorba de ce lipsește; explici din ce formulare
+    a textului reiese tăcerea și de ce contează antropologic.
 
 Reguli obligatorii:
-- Fiecare observație se sprijină pe un CITAT EXACT din text, de cel mult 25 de
-  cuvinte, copiat literă cu literă, inclusiv greșelile de scanare, diacriticele
-  și punctuația din text. Nu corecta, nu parafraza și nu combina fragmente în
-  citat. Dacă nu poți cita exact, nu face observația.
+- Fiecare observație care cere citat se sprijină pe un CITAT EXACT din text, de
+  cel mult 25 de cuvinte, copiat literă cu literă, inclusiv greșelile de
+  scanare, diacriticele și punctuația. Nu corecta, nu parafraza, nu combina
+  fragmente. Dacă nu poți cita exact, nu face observația.
+- Cel mult 3 observații pe fiecare listă. Listele pot rămâne goale; nu umple
+  spațiul. Câmpurile care nu sunt liste se completează mereu; dacă textul nu
+  oferă material, alegi varianta tehnică sau neutră și lași citatul gol.
 - Ești strict neutru politic. Nu spui dacă legea este bună sau rea, nu evaluezi
   partide, inițiatori sau tabere, nu faci predicții și nu dai sfaturi. Aplici
   aceleași criterii oricărui text, indiferent de orientarea lui.
-- Descrii ce face textul, nu intențiile autorilor.
-- Dacă textul este tehnic și nu are nimic relevant antropologic, spui asta și
-  lași listele goale. Nu umple spațiul.
-- „interes_antropologic” arată cât de mult material oferă textul pentru o
-  lectură antropologică. Nu este un scor de risc și nu este o judecată despre
-  lege.
+- Descrii ce face textul, nu intențiile autorilor. La tăceri descrii efectul
+  formulării, nu motivul pentru care a fost aleasă, și nu numești partide decât
+  dacă textul le numește.
+- Un text tehnic poate avea totuși interes antropologic prin ce normalizează,
+  ce universalizează sau ce trece sub tăcere; ține cont de asta la
+  „interes_antropologic”, care arată materialul pentru lectură, nu un risc.
 - Scrii în limba română, clar, fără jargon inutil.
 """.strip()
 
@@ -140,74 +173,77 @@ LEGITIMATION = [
     "popor", "expertiza", "constitutie_lege", "ue_international", "traditie_istorie",
     "urgenta_criza", "morala_valori", "eficienta_economica", "altele",
 ]
+BOUNDARY = ["cetatenie", "teritoriu", "etnie_limba", "varsta", "gen_familie", "ocupatie_statut",
+            "statut_moral", "venit_proprietate", "altele"]
+STATE_ROLE = ["protector", "controlor", "furnizor", "arbitru", "partener", "administrator", "altele"]
+CITIZEN_ROLE = ["beneficiar", "contribuabil", "suspect", "victima", "consumator", "participant",
+                "subiect_disciplinat", "altele"]
+MORAL = ["datorie", "merit", "dreptate_echitate", "abuz_privilegiu", "reciprocitate", "rusine_onoare",
+         "altele"]
+TIME = ["criza_urgenta", "decadere_restaurare", "progres_modernizare", "traditie_continuitate",
+        "normalitate_tehnica", "altele"]
+SCALE = ["local", "regional", "national", "european", "global", "centru_periferie", "rural_urban",
+         "intern_extern"]
+AFFECT = ["frica_amenintare", "indignare", "compasiune", "mandrie", "speranta", "neutru_tehnic", "altele"]
+PERFORMATIVE = ["preponderent_instrumental", "mixt", "preponderent_simbolic_declarativ"]
+KNOWLEDGE = ["statistici_studii", "comparatie_internationala", "jurisprudenta", "experienta_practica",
+             "bun_simt_evidenta", "niciuna"]
 
-SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "rezumat", "interes_antropologic", "motivul_interesului", "comunitate_imaginata",
-        "registru_simbolic", "legitimare", "dispozitive_retorice", "ce_nu_se_poate_spune",
-    ],
-    "properties": {
-        "rezumat": {"type": "string", "description": "Ce propune legea, în 1-2 fraze neutre."},
-        "interes_antropologic": {"type": "string", "enum": ["ridicat", "mediu", "scazut"]},
-        "motivul_interesului": {"type": "string"},
-        "comunitate_imaginata": {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["noi", "ei_sau_ceilalti", "categorii_create"],
-            "properties": {
-                "noi": {"type": "string"},
-                "ei_sau_ceilalti": {"type": "string"},
-                "categorii_create": {"type": "array", "items": {"type": "string"}},
-            },
-        },
-        "registru_simbolic": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["tema", "descriere", "citat"],
-                "properties": {
-                    "tema": {"type": "string"},
-                    "descriere": {"type": "string"},
-                    "citat": {"type": "string"},
-                },
-            },
-        },
-        "legitimare": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["sursa", "descriere", "citat"],
-                "properties": {
-                    "sursa": {"type": "string", "enum": LEGITIMATION},
-                    "descriere": {"type": "string"},
-                    "citat": {"type": "string"},
-                },
-            },
-        },
-        "dispozitive_retorice": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["tehnica", "citat", "explicatie", "marker_explicit"],
-                "properties": {
-                    "tehnica": {"type": "string", "enum": TECHNIQUES},
-                    "citat": {"type": "string"},
-                    "explicatie": {"type": "string"},
-                    "marker_explicit": {"type": "boolean"},
-                },
-            },
-        },
-        "ce_nu_se_poate_spune": {
-            "type": "string",
-            "description": "Ce nu se poate concluziona doar din acest text.",
-        },
-    },
-}
+
+def _s(desc: str = "") -> Dict[str, Any]:
+    d: Dict[str, Any] = {"type": "string"}
+    if desc:
+        d["description"] = desc
+    return d
+
+
+def _enum(values: List[str]) -> Dict[str, Any]:
+    return {"type": "string", "enum": values}
+
+
+def _obj(props: Dict[str, Any]) -> Dict[str, Any]:
+    return {"type": "object", "additionalProperties": False, "required": list(props), "properties": props}
+
+
+def _list(props: Dict[str, Any]) -> Dict[str, Any]:
+    return {"type": "array", "items": _obj(props)}
+
+
+QUOTE = _s("Citat exact din text, cel mult 25 de cuvinte; gol dacă nu există.")
+
+SCHEMA: Dict[str, Any] = _obj({
+    "rezumat": _s("Ce propune legea, în 1-2 fraze neutre."),
+    "interes_antropologic": _enum(["ridicat", "mediu", "scazut"]),
+    "motivul_interesului": _s(),
+    "comunitate_imaginata": _obj({"noi": _s(), "ei_sau_ceilalti": _s(),
+                                  "categorii_create": {"type": "array", "items": _s()}}),
+    "granite_apartenenta": _list({"criteriu": _enum(BOUNDARY), "descriere": _s(), "citat": QUOTE}),
+    "relatia_stat_cetatean": _obj({"statul_ca": _enum(STATE_ROLE), "cetateanul_ca": _enum(CITIZEN_ROLE),
+                                   "descriere": _s(), "citat": QUOTE}),
+    "distributia_puterii": _list({"castiga": _s(), "pierde": _s(), "descriere": _s(), "citat": QUOTE}),
+    "economie_morala": _list({"tema": _enum(MORAL), "descriere": _s(), "citat": QUOTE}),
+    "temporalitate": _obj({"tip": _enum(TIME), "descriere": _s(), "citat": QUOTE}),
+    "memorie_istorie": _list({"descriere": _s(), "citat": QUOTE}),
+    "spatiu_teritoriu": _list({"scara": _enum(SCALE), "descriere": _s(), "citat": QUOTE}),
+    "corp_biopolitica": _list({"descriere": _s(), "citat": QUOTE}),
+    "registru_simbolic": _list({"tema": _s(), "descriere": _s(), "citat": QUOTE}),
+    "resemnificare": _list({"termen": _s(), "sens_nou": _s(), "citat": QUOTE}),
+    "legitimare": _list({"sursa": _enum(LEGITIMATION), "descriere": _s(), "citat": QUOTE}),
+    "cunoastere_dovezi": _obj({"date_empirice_invocate": {"type": "boolean"}, "tip": _enum(KNOWLEDGE),
+                               "descriere": _s()}),
+    "registru_afectiv": _obj({"dominant": _enum(AFFECT), "descriere": _s(), "citat": QUOTE}),
+    "performativitate": _obj({"caracter": _enum(PERFORMATIVE), "justificare": _s()}),
+    "dispozitive_retorice": _list({"tehnica": _enum(TECHNIQUES), "citat": QUOTE, "explicatie": _s(),
+                                   "marker_explicit": {"type": "boolean"}}),
+    "taceri": _list({"ce_lipseste": _s(), "de_unde_reiese": _s(), "de_ce_conteaza": _s()}),
+    "ce_nu_se_poate_spune": _s("Ce nu se poate concluziona doar din acest text."),
+})
+
+# Fields whose observations carry a quote that must be verified.
+QUOTED_LISTS = ["granite_apartenenta", "distributia_puterii", "economie_morala", "memorie_istorie",
+                "spatiu_teritoriu", "corp_biopolitica", "registru_simbolic", "resemnificare",
+                "legitimare", "dispozitive_retorice"]
+QUOTED_OBJECTS = ["relatia_stat_cetatean", "temporalitate", "registru_afectiv"]
 
 TECHNIQUE_LABEL = {
     "falsa_dilema": "Falsă dilemă", "presupozitie": "Presupoziție",
@@ -221,8 +257,44 @@ LEGITIMATION_LABEL = {
     "urgenta_criza": "Urgența sau criza", "morala_valori": "Morala și valorile",
     "eficienta_economica": "Eficiența economică", "altele": "Altă sursă",
 }
+LABEL = {
+    # boundaries
+    "cetatenie": "Cetățenie", "teritoriu": "Teritoriu", "etnie_limba": "Etnie sau limbă", "varsta": "Vârstă",
+    "gen_familie": "Gen sau familie", "ocupatie_statut": "Ocupație sau statut", "statut_moral": "Statut moral",
+    "venit_proprietate": "Venit sau proprietate",
+    # state and citizen
+    "protector": "protector", "controlor": "controlor", "furnizor": "furnizor", "arbitru": "arbitru",
+    "partener": "partener", "administrator": "administrator", "beneficiar": "beneficiar",
+    "contribuabil": "contribuabil", "suspect": "suspect", "victima": "victimă", "consumator": "consumator",
+    "participant": "participant", "subiect_disciplinat": "subiect disciplinat",
+    # moral economy
+    "datorie": "Datorie", "merit": "Merit", "dreptate_echitate": "Dreptate și echitate",
+    "abuz_privilegiu": "Abuz sau privilegiu", "reciprocitate": "Reciprocitate", "rusine_onoare": "Rușine sau onoare",
+    # time
+    "criza_urgenta": "criză și urgență", "decadere_restaurare": "decădere și restaurare",
+    "progres_modernizare": "progres și modernizare", "traditie_continuitate": "tradiție și continuitate",
+    "normalitate_tehnica": "normalitate tehnică",
+    # space
+    "local": "Local", "regional": "Regional", "national": "Național", "european": "European", "global": "Global",
+    "centru_periferie": "Centru și periferie", "rural_urban": "Rural și urban", "intern_extern": "Intern și extern",
+    # affect
+    "frica_amenintare": "frică sau amenințare", "indignare": "indignare", "compasiune": "compasiune",
+    "mandrie": "mândrie", "speranta": "speranță", "neutru_tehnic": "neutru-tehnic",
+    # performativity
+    "preponderent_instrumental": "preponderent instrumentală", "mixt": "mixtă",
+    "preponderent_simbolic_declarativ": "preponderent simbolică și declarativă",
+    # knowledge
+    "statistici_studii": "statistici sau studii", "comparatie_internationala": "comparații internaționale",
+    "jurisprudenta": "jurisprudență", "experienta_practica": "experiență practică",
+    "bun_simt_evidenta": "bun-simț sau „evidență”", "niciuna": "niciuna",
+    "altele": "altele",
+}
 INTEREST_ORDER = {"ridicat": 0, "mediu": 1, "scazut": 2}
 INTEREST_LABEL = {"ridicat": "ridicat", "mediu": "mediu", "scazut": "scăzut"}
+
+
+def lab(v: Any) -> str:
+    return LABEL.get(str(v), str(v).replace("_", " "))
 
 
 # --------------------------------------------------------------------------
@@ -405,6 +477,9 @@ def find_initiators(html: str) -> str:
     if not m:
         return ""
     snippet = re.sub(r"\s+", " ", m.group(1)).strip()
+    form_words = ("Indiferent", "Cuvinte în titlu", "Prima Cameră", "Fără paginare", "Nume inițiator")
+    if any(w in snippet for w in form_words) or len(snippet) < 5:
+        return ""
     return snippet[:400]
 
 
@@ -549,20 +624,33 @@ def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def verify_quotes(reading: Dict[str, Any], text: str) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
-    """Keep only observations whose quote is found in the source text."""
+    """Keep only quoted observations whose quote is found in the source text.
+    For single objects the classification is kept but an unverified quote is removed."""
     src = normalise(text)
     key = match_key(text)
     rejected: List[Dict[str, str]] = []
-    for field in ("registru_simbolic", "legitimare", "dispozitive_retorice"):
+    for field in QUOTED_LISTS:
         kept = []
-        for obs in reading.get(field, []):
+        for obs in reading.get(field, []) or []:
             status = quote_status(obs.get("citat", ""), src, key)
             if status:
                 obs["_potrivire"] = status
                 kept.append(obs)
             else:
                 rejected.append({"sectiune": field, "citat": obs.get("citat", "")})
-        reading[field] = kept
+        reading[field] = kept[:3]
+    for field in QUOTED_OBJECTS:
+        obj = reading.get(field) or {}
+        q = (obj.get("citat") or "").strip()
+        if q:
+            status = quote_status(q, src, key)
+            if status:
+                obj["_potrivire"] = status
+            else:
+                rejected.append({"sectiune": field, "citat": q})
+                obj["citat"] = ""
+        reading[field] = obj
+    reading["taceri"] = (reading.get("taceri") or [])[:3]
     return reading, rejected
 
 
@@ -580,6 +668,29 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     st.font.name = "Calibri"
     st.font.size = Pt(11)
 
+    def bold_lead(lead: str, text: str) -> None:
+        p = doc.add_paragraph()
+        p.add_run(lead).bold = True
+        p.add_run(text)
+
+    def quote_run(p: Any, o: Dict[str, Any]) -> None:
+        if o.get("citat"):
+            p.add_run(f" Citat: „{o['citat']}”").italic = True
+            if o.get("_potrivire") == "aproximativ":
+                p.add_run(" (potrivire aproximativă cu textul scanat)").font.size = Pt(8)
+
+    def bullets(head: str, obs: List[Dict[str, Any]], label_fn, text_fn) -> None:
+        if not obs:
+            return
+        doc.add_paragraph().add_run(head).bold = True
+        for o in obs:
+            q = doc.add_paragraph(style="List Bullet")
+            lead = label_fn(o)
+            if lead:
+                q.add_run(lead + ". ").bold = True
+            q.add_run(text_fn(o))
+            quote_run(q, o)
+
     today = dt.date.today()
     title = doc.add_heading("Lectură antropologică a proiectelor de lege în consultare publică la Senat", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -591,19 +702,29 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     doc.add_heading("Cum se citește acest raport", 1)
     doc.add_paragraph(
         "Pentru fiecare proiect, expunerea de motive a fost descărcată de pe senat.ro și citită de un model "
-        f"de limbaj ({MODEL}), cu instrucțiunea de a face o lectură antropologică descriptivă: pe cine "
-        "construiește textul ca „noi” și ca „ei”, ce simboluri și ce memorie mobilizează, pe ce autoritate "
-        "își sprijină argumentul și ce dispozitive retorice folosește. Fiecare observație are un citat exact. "
-        "Programul a verificat automat că fiecare citat există în textul expunerii de motive; observațiile "
-        "al căror citat nu a putut fi găsit au fost scoase din raport și sunt enumerate în anexă. Unde "
-        "textul scanat are diacritice sau litere stricate, citatul este acceptat dacă se potrivește aproape "
-        "literă cu literă și este marcat ca „potrivire aproximativă”.")
+        f"de limbaj ({MODEL}), cu instrucțiunea de a face o lectură antropologică descriptivă pe șaptesprezece "
+        "variabile: comunitatea imaginată, granițele apartenenței, relația dintre stat și cetățean, distribuția "
+        "puterii, economia morală, temporalitatea, memoria, spațiul, corpul, registrul simbolic, resemnificarea "
+        "termenilor, legitimarea, cunoașterea invocată, registrul afectiv, performativitatea, dispozitivele "
+        "retorice și tăcerile textului. Observațiile au citat exact. Programul a verificat automat că fiecare "
+        "citat există în expunerea de motive; observațiile al căror citat nu a putut fi găsit au fost scoase și "
+        "sunt enumerate în anexă. Unde textul scanat are diacritice stricate, citatul e acceptat dacă se "
+        "potrivește aproape literă cu literă și e marcat ca „potrivire aproximativă”. Tăcerile nu au citat, "
+        "pentru că descriu ce lipsește; sunt observații de context, nu constatări textuale.")
     doc.add_paragraph(
         "Lectura este asistată de AI și este descriptivă. Nu spune dacă o lege este bună sau rea și nu "
-        "evaluează inițiatorii sau partidele. „Interesul antropologic” arată cât material oferă textul "
-        "pentru o astfel de lectură, nu un risc. Recunoașterea dispozitivelor retorice de către modele de "
-        "limbaj nu este validată pe limba română și depinde mult de prezența unor marcatori expliciți; "
-        "o tehnică nesemnalată poate fi totuși prezentă.")
+        "evaluează inițiatorii sau partidele. „Interesul antropologic” arată cât material oferă textul pentru o "
+        "astfel de lectură, nu un risc. Recunoașterea dispozitivelor retorice de către modele de limbaj nu este "
+        "validată pe limba română și depinde mult de prezența unor marcatori expliciți; o tehnică nesemnalată "
+        "poate fi totuși prezentă.")
+    if MODEL != DEFAULT_MODEL:
+        warn = doc.add_paragraph()
+        warn.add_run("Atenție la model. ").bold = True
+        warn.add_run(f"Această lectură a fost făcută cu {MODEL}, nu cu modelul principal {DEFAULT_MODEL}, de "
+                     "obicei pentru că acesta era aglomerat. Modelele mai ușoare tind să vadă mai puțin din ce e "
+                     "implicit, așa că lecturile pot fi mai superficiale. Pentru o lectură mai fină, rulează din "
+                     "nou programul fără opțiunea --model când modelul principal e disponibil; lecturile noi se "
+                     "fac separat și nu le înlocuiesc pe cele vechi din cache.")
 
     if dry_run:
         doc.add_paragraph("Rulare de probă: expunerile de motive au fost descărcate, dar nu au fost citite "
@@ -613,40 +734,69 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     analysed.sort(key=lambda i: (i.get("deadline") or "9999",
                                  INTEREST_ORDER.get(i["reading"].get("interes_antropologic"), 3)))
 
+    def fmt_date(d: Optional[str]) -> str:
+        return dt.date.fromisoformat(d).strftime("%d.%m.%Y") if d else "—"
+
     doc.add_heading("Pe scurt", 1)
     table = doc.add_table(rows=1, cols=4)
     table.style = "Light Grid Accent 1"
-    hdr = table.rows[0].cells
-    for c, t in zip(hdr, ["Proiect", "Ce propune", "Termen consultare", "Interes antropologic"]):
+    for c, t in zip(table.rows[0].cells, ["Proiect", "Ce propune", "Termen consultare", "Interes antropologic"]):
         c.text = t
     for it in (analysed if not dry_run else items):
         row = table.add_row().cells
         row[0].text = it["id"]
         row[1].text = (it["reading"]["rezumat"] if it.get("reading") else it.get("title", ""))[:300]
-        d = it.get("deadline")
-        row[2].text = dt.date.fromisoformat(d).strftime("%d.%m.%Y") if d else "—"
+        row[2].text = fmt_date(it.get("deadline"))
         row[3].text = INTEREST_LABEL.get(it["reading"]["interes_antropologic"], "—") if it.get("reading") else "—"
+
+    if analysed:
+        doc.add_heading("Matricea comparativă", 1)
+        doc.add_paragraph("Clasificările de mai jos permit compararea proiectelor între ele. Fiecare este explicată, "
+                          "cu citat, în secțiunea proiectului.")
+        mt = doc.add_table(rows=1, cols=7)
+        mt.style = "Light Grid Accent 1"
+        heads = ["Proiect", "Statul ca", "Cetățeanul ca", "Timpul politic", "Afect dominant",
+                 "Caracterul legii", "Date empirice"]
+        for c, t in zip(mt.rows[0].cells, heads):
+            c.text = t
+        for it in analysed:
+            rd = it["reading"]
+            sc = rd.get("relatia_stat_cetatean", {}) or {}
+            cells = mt.add_row().cells
+            vals = [it["id"], lab(sc.get("statul_ca", "")), lab(sc.get("cetateanul_ca", "")),
+                    lab((rd.get("temporalitate") or {}).get("tip", "")),
+                    lab((rd.get("registru_afectiv") or {}).get("dominant", "")),
+                    lab((rd.get("performativitate") or {}).get("caracter", "")),
+                    "da" if (rd.get("cunoastere_dovezi") or {}).get("date_empirice_invocate") else "nu"]
+            for c, v in zip(cells, vals):
+                c.text = v
+                for para in c.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(9)
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        for row in mt.rows:                      # keep each row on one page
+            trPr = row._tr.get_or_add_trPr()
+            el = OxmlElement("w:cantSplit")
+            el.set(qn("w:val"), "true")
+            trPr.append(el)
 
     for it in analysed:
         rd = it["reading"]
         doc.add_heading(f"{it['id']} — {it.get('title', '')[:160]}", 1)
         meta = doc.add_paragraph()
-        d = it.get("deadline")
-        bits = [f"Termen consultare: {dt.date.fromisoformat(d).strftime('%d.%m.%Y')}" if d else None,
+        bits = [f"Termen consultare: {fmt_date(it.get('deadline'))}",
                 f"Inițiatori (din fișa Senatului): {it['initiators']}" if it.get("initiators") else None,
                 f"Expunerea de motive: {it.get('em_url', '')}",
                 f"Fișa proiectului: {it.get('page_url', '')}" if it.get("page_url") else None]
         meta.add_run("\n".join(b for b in bits if b)).font.size = Pt(9)
 
-        doc.add_paragraph().add_run("Ce propune. ").bold = True
-        doc.paragraphs[-1].add_run(rd["rezumat"])
-        p = doc.add_paragraph()
-        p.add_run(f"Interes antropologic: {INTEREST_LABEL.get(rd['interes_antropologic'], '')}. ").bold = True
-        p.add_run(rd.get("motivul_interesului", ""))
+        bold_lead("Ce propune. ", rd.get("rezumat", ""))
+        bold_lead(f"Interes antropologic: {INTEREST_LABEL.get(rd.get('interes_antropologic'), '')}. ",
+                  rd.get("motivul_interesului", ""))
 
-        ci = rd.get("comunitate_imaginata", {})
-        p = doc.add_paragraph()
-        p.add_run("Comunitatea imaginată. ").bold = True
+        doc.add_heading("Comunitate și apartenență", 2)
+        ci = rd.get("comunitate_imaginata", {}) or {}
         parts = []
         if ci.get("noi"):
             parts.append(f"„Noi”: {ci['noi']}")
@@ -654,39 +804,77 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
             parts.append(f"„Ei” sau ceilalți: {ci['ei_sau_ceilalti']}")
         if ci.get("categorii_create"):
             parts.append("Categorii create sau delimitate: " + "; ".join(ci["categorii_create"]))
-        p.add_run(". ".join(x.rstrip(".") for x in parts) + "." if parts else "Textul nu construiește explicit un „noi” și un „ei”.")
-
-        def observations(head: str, obs: List[Dict[str, Any]], label_fn) -> None:
-            if not obs:
-                return
-            doc.add_paragraph().add_run(head).bold = True
-            for o in obs:
+        bold_lead("Comunitatea imaginată. ", ". ".join(x.rstrip(".") for x in parts) + "." if parts
+                  else "Textul nu construiește explicit un „noi” și un „ei”.")
+        bullets("Granițele apartenenței", rd.get("granite_apartenenta", []),
+                lambda o: lab(o.get("criteriu")), lambda o: o.get("descriere", ""))
+        if rd.get("taceri"):
+            doc.add_paragraph().add_run("Ce lasă textul nenumit").bold = True
+            for t in rd["taceri"]:
                 q = doc.add_paragraph(style="List Bullet")
-                q.add_run(label_fn(o) + ". ").bold = True
-                q.add_run(o.get("descriere") or o.get("explicatie") or "")
-                q.add_run(f" Citat: „{o['citat']}”").italic = True
-                if o.get("_potrivire") == "aproximativ":
-                    q.add_run(" (potrivire aproximativă cu textul scanat)").font.size = Pt(8)
+                q.add_run(t.get("ce_lipseste", "").rstrip(".") + ". ").bold = True
+                q.add_run(f"Reiese din: {t.get('de_unde_reiese', '').rstrip('.')}. "
+                          f"De ce contează: {t.get('de_ce_conteaza', '')}")
+                q.add_run(" (observație de context, fără citat)").font.size = Pt(8)
 
-        observations("Registrul simbolic", rd.get("registru_simbolic", []),
-                     lambda o: o.get("tema", "").capitalize() or "Temă")
-        observations("Legitimarea", rd.get("legitimare", []),
-                     lambda o: LEGITIMATION_LABEL.get(o.get("sursa"), "Sursă"))
-        observations("Dispozitive retorice", rd.get("dispozitive_retorice", []),
-                     lambda o: TECHNIQUE_LABEL.get(o.get("tehnica"), "Tehnică")
-                     + (" (marker explicit)" if o.get("marker_explicit") else " (implicit)"))
-
+        doc.add_heading("Stat, putere și morală", 2)
+        sc = rd.get("relatia_stat_cetatean", {}) or {}
         p = doc.add_paragraph()
-        p.add_run("Ce nu se poate spune din acest text. ").bold = True
-        p.add_run(rd.get("ce_nu_se_poate_spune", ""))
+        p.add_run("Relația stat–cetățean. ").bold = True
+        p.add_run(f"Statul apare ca {lab(sc.get('statul_ca', ''))}, cetățeanul ca "
+                  f"{lab(sc.get('cetateanul_ca', ''))}. {sc.get('descriere', '')}")
+        quote_run(p, sc)
+        bullets("Distribuția puterii", rd.get("distributia_puterii", []),
+                lambda o: "",
+                lambda o: f"Câștigă: {o.get('castiga', '—')}; pierde: {o.get('pierde', '—')}. {o.get('descriere', '')}")
+        bullets("Economia morală", rd.get("economie_morala", []),
+                lambda o: lab(o.get("tema")), lambda o: o.get("descriere", ""))
+
+        doc.add_heading("Timp, memorie, spațiu și corp", 2)
+        tp = rd.get("temporalitate", {}) or {}
+        p = doc.add_paragraph()
+        p.add_run("Timpul politic. ").bold = True
+        p.add_run(f"{lab(tp.get('tip', '')).capitalize()}. {tp.get('descriere', '')}")
+        quote_run(p, tp)
+        bullets("Memoria și istoria", rd.get("memorie_istorie", []), lambda o: "", lambda o: o.get("descriere", ""))
+        bullets("Spațiul și teritoriul", rd.get("spatiu_teritoriu", []),
+                lambda o: lab(o.get("scara")), lambda o: o.get("descriere", ""))
+        bullets("Corpul și biopolitica", rd.get("corp_biopolitica", []), lambda o: "", lambda o: o.get("descriere", ""))
+
+        doc.add_heading("Simboluri, legitimare și cunoaștere", 2)
+        bullets("Registrul simbolic", rd.get("registru_simbolic", []),
+                lambda o: (o.get("tema", "") or "Temă").capitalize(), lambda o: o.get("descriere", ""))
+        bullets("Resemnificarea termenilor", rd.get("resemnificare", []),
+                lambda o: f"„{o.get('termen', '')}”", lambda o: o.get("sens_nou", ""))
+        bullets("Legitimarea", rd.get("legitimare", []),
+                lambda o: LEGITIMATION_LABEL.get(o.get("sursa"), "Sursă"), lambda o: o.get("descriere", ""))
+        kd = rd.get("cunoastere_dovezi", {}) or {}
+        bold_lead("Cunoașterea invocată. ",
+                  f"Date empirice verificabile: {'da' if kd.get('date_empirice_invocate') else 'nu'}; tipul "
+                  f"principal: {lab(kd.get('tip', ''))}. {kd.get('descriere', '')}")
+
+        doc.add_heading("Afect, performativitate și retorică", 2)
+        af = rd.get("registru_afectiv", {}) or {}
+        p = doc.add_paragraph()
+        p.add_run("Registrul afectiv. ").bold = True
+        p.add_run(f"Dominant: {lab(af.get('dominant', ''))}. {af.get('descriere', '')}")
+        quote_run(p, af)
+        pf = rd.get("performativitate", {}) or {}
+        bold_lead("Caracterul legii. ", f"{lab(pf.get('caracter', '')).capitalize()}. {pf.get('justificare', '')}")
+        bullets("Dispozitive retorice", rd.get("dispozitive_retorice", []),
+                lambda o: TECHNIQUE_LABEL.get(o.get("tehnica"), "Tehnică")
+                + (" (marker explicit)" if o.get("marker_explicit") else " (implicit)"),
+                lambda o: o.get("explicatie", ""))
+
+        bold_lead("Ce nu se poate spune din acest text. ", rd.get("ce_nu_se_poate_spune", ""))
         if rd.get("_meta", {}).get("truncated"):
             doc.add_paragraph(f"Atenție: expunerea de motive a fost tăiată la {MAX_TEXT_CHARS} de caractere "
                               "înainte de lectură.").runs[0].italic = True
 
     if skipped:
         doc.add_heading("Proiecte fără lectură", 1)
-        doc.add_paragraph("Pentru aceste proiecte expunerea de motive nu a putut fi descărcată sau nu are "
-                          "un strat de text care să poată fi citit (de exemplu, un document scanat ca imagine).")
+        doc.add_paragraph("Pentru aceste proiecte lectura nu a putut fi făcută: expunerea de motive nu a putut "
+                          "fi descărcată, nu are text care să poată fi citit, sau modelul nu a răspuns.")
         for it in skipped:
             doc.add_paragraph(f"{it['id']} — {it.get('title', '')[:160]}. Motiv: {it.get('skip_reason', '')}",
                               style="List Bullet")
@@ -694,12 +882,11 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     rejected_all = [(it["id"], r) for it in analysed for r in it.get("rejected", [])]
     doc.add_heading("Anexă: citate care nu au putut fi verificate", 1)
     if rejected_all:
-        doc.add_paragraph("Modelul a propus aceste citate, dar ele nu apar exact în textul expunerii de motive. "
-                          "Observațiile corespunzătoare au fost scoase din raport.")
+        doc.add_paragraph("Modelul a propus aceste citate, dar ele nu apar în textul expunerii de motive. "
+                          "Observațiile corespunzătoare au fost scoase din raport (la clasificările unice s-a "
+                          "păstrat doar clasificarea, fără citat).")
         for pid, r in rejected_all:
-            sect = {"registru_simbolic": "registrul simbolic", "legitimare": "legitimare",
-                    "dispozitive_retorice": "dispozitive retorice"}.get(r["sectiune"], r["sectiune"])
-            doc.add_paragraph(f"{pid} · {sect}: „{r['citat']}”", style="List Bullet")
+            doc.add_paragraph(f"{pid} · {r['sectiune'].replace('_', ' ')}: „{r['citat']}”", style="List Bullet")
     else:
         doc.add_paragraph("Toate citatele propuse de model au fost găsite în textele sursă.")
 
@@ -830,7 +1017,7 @@ def main() -> int:
             continue
         reading, rejected = verify_quotes(reading, it["text"])
         it["reading"], it["rejected"] = reading, rejected
-        kept = sum(len(reading.get(k, [])) for k in ("registru_simbolic", "legitimare", "dispozitive_retorice"))
+        kept = sum(len(reading.get(k, []) or []) for k in QUOTED_LISTS)
         say(f"    interes {reading.get('interes_antropologic')}; {kept} observații cu citat verificat, "
             f"{len(rejected)} scoase")
         done.append(it)
