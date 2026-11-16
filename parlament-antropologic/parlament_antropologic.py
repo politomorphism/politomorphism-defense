@@ -474,18 +474,29 @@ def find_em_link(html: str, page_url: str, nr: int) -> Optional[str]:
     return own[0][1]
 
 
+INITIATOR_FORM_WORDS = ("Indiferent", "Cuvinte în titlu", "Prima Cameră", "Fără paginare", "Nume inițiator",
+                        "Ședință comună", "Sunt opinii exprimate")
+
+
+def clean_initiators(snippet: str) -> str:
+    """Return the initiators text, or an empty string if it is really the search form of the page."""
+    snippet = re.sub(r"\s+", " ", snippet or "").strip()
+    if len(snippet) < 5 or any(w in snippet for w in INITIATOR_FORM_WORDS):
+        return ""
+    return snippet[:400]
+
+
 def find_initiators(html: str) -> str:
     from bs4 import BeautifulSoup
 
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
-    m = re.search(r"Ini[țţt]iator[i]?\s*:?\s*\n?(.{3,600}?)(?:\n[A-ZĂÂÎȘŞȚŢ][^\n]{0,40}:|\Z)", text, re.S)
-    if not m:
-        return ""
-    snippet = re.sub(r"\s+", " ", m.group(1)).strip()
-    form_words = ("Indiferent", "Cuvinte în titlu", "Prima Cameră", "Fără paginare", "Nume inițiator")
-    if any(w in snippet for w in form_words) or len(snippet) < 5:
-        return ""
-    return snippet[:400]
+    # the page has a search form that also says "Inițiator"; take the first match that is not the form
+    for m in re.finditer(r"Ini[țţt]iator[i]?\s*:?\s*\n?(.{3,600}?)(?=\n[A-ZĂÂÎȘŞȚŢ][^\n]{0,40}:|\Z)",
+                         text, re.S):
+        found = clean_initiators(m.group(1))
+        if found:
+            return found
+    return ""
 
 
 def pdf_text(data: bytes) -> str:
@@ -512,6 +523,7 @@ def fetch_project(session: Any, item: Dict[str, Any]) -> Dict[str, Any]:
 
     if meta_path.exists() and txt_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["initiators"] = clean_initiators(meta.get("initiators", ""))   # older caches kept the form
         item.update(meta)
         item["text"] = txt_path.read_text(encoding="utf-8")
         return item
@@ -800,6 +812,7 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     table = doc.add_table(rows=1, cols=4) if (analysed or dry_run) else None
     if table is not None:
         table.style = "Light Grid Accent 1"
+        table.autofit = False
         for c, t in zip(table.rows[0].cells, ["Proiect", "Ce propune", "Termen consultare",
                                               "Interes antropologic"]):
             c.text = t
@@ -809,6 +822,14 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
         row[1].text = (it["reading"]["rezumat"] if it.get("reading") else it.get("title", ""))[:300]
         row[2].text = fmt_date(it.get("deadline"))
         row[3].text = INTEREST_LABEL.get(it["reading"]["interes_antropologic"], "—") if it.get("reading") else "—"
+    if table is not None:
+        from docx.shared import Cm
+        widths = (Cm(2.4), Cm(9.6), Cm(2.6), Cm(2.6))   # wide middle column, so the summary is readable
+        for col_, w_ in zip(table.columns, widths):
+            col_.width = w_
+        for r_ in table.rows:
+            for c_, w_ in zip(r_.cells, widths):
+                c_.width = w_
 
     if analysed:
         doc.add_heading("Matricea comparativă", 1)
