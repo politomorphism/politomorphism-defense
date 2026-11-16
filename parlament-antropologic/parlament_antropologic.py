@@ -574,6 +574,13 @@ class ModelBusy(RuntimeError):
     """The model stayed overloaded (503) or timed out after all retries."""
 
 
+class DailyLimit(RuntimeError):
+    """The free daily quota of this model is used up (Google counts it separately for each model)."""
+
+
+EXHAUSTED: set = set()          # models whose daily quota ran out during this run
+
+
 def _cache_path(item: Dict[str, Any], model: str, body: str) -> Path:
     key = hashlib.sha256(f"{PROMPT_VERSION}|{model}|{body}".encode("utf-8")).hexdigest()[:16]
     path = CACHE / "lecturi" / f"B{item['nr']}_{item['year']}_{key}.json"
@@ -607,8 +614,8 @@ def _read_once(client: Any, model: str, item: Dict[str, Any], body: str, truncat
             msg = str(exc)
             if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
                 if "per day" in msg.lower() or "perday" in msg.lower().replace(" ", ""):
-                    raise RuntimeError("limita zilnică gratuită Gemini a fost atinsă; reia mâine "
-                                       "(lecturile făcute deja rămân în cache)") from exc
+                    EXHAUSTED.add(model)
+                    raise DailyLimit(f"limita zilnică gratuită pentru {model} a fost atinsă") from exc
                 if attempt <= 3:
                     say("    limita pe minut a fost atinsă; aștept 65 de secunde")
                     time.sleep(65)
@@ -648,13 +655,22 @@ def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
     text = item["text"]
     truncated = len(text) > MAX_TEXT_CHARS
     body = text[:MAX_TEXT_CHARS]
-    try:
-        return _read_once(client, MODEL, item, body, truncated)
-    except ModelBusy:
-        if not AUTO_FALLBACK or MODEL == FALLBACK_MODEL:
-            raise
-        say(f"    trec automat pe modelul mai ușor {FALLBACK_MODEL}")
-        return _read_once(client, FALLBACK_MODEL, item, body, truncated)
+    can_fall_back = AUTO_FALLBACK and MODEL != FALLBACK_MODEL
+    if MODEL not in EXHAUSTED or not can_fall_back:
+        try:
+            return _read_once(client, MODEL, item, body, truncated)
+        except ModelBusy:
+            if not can_fall_back:
+                raise
+            say(f"    trec automat pe modelul mai ușor {FALLBACK_MODEL}")
+        except DailyLimit:
+            if not can_fall_back:
+                raise
+            say(f"    limita zilnică pentru {MODEL} s-a terminat; trec pe {FALLBACK_MODEL}, "
+                "care are limita lui separată")
+    if FALLBACK_MODEL in EXHAUSTED:
+        raise DailyLimit("limita zilnică gratuită a fost atinsă la ambele modele")
+    return _read_once(client, FALLBACK_MODEL, item, body, truncated)
 
 
 def verify_quotes(reading: Dict[str, Any], text: str) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -1061,6 +1077,12 @@ def main() -> int:
             continue
         try:
             reading = read_with_model(client, it)
+        except DailyLimit as exc:
+            it["skip_reason"] = (f"{exc}; rulează din nou mâine (lecturile făcute deja rămân în cache "
+                                 "și nu se mai cer a doua oară)")
+            say(f"    {it['skip_reason']}")
+            skipped.append(it)
+            continue
         except ModelBusy:
             it["skip_reason"] = ("modelele Gemini gratuite au fost aglomerate la Google în acest moment; "
                                  "rulează din nou mai târziu")
