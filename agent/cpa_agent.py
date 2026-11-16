@@ -30,7 +30,8 @@ Usage (from the folder that contains this file):
 
 Settings (environment variables):
     GEMINI_API_KEY         your Gemini API key from Google AI Studio (required)
-    CPA_MODEL              model name                 (default: gemini-3.8-flash)
+    CPA_MODEL              model name                 (default: gemini-3.8-flash;
+                           if it is often busy, try gemini-3.5-flash-lite)
     CPA_MAX_TOOL_CALLS     tool calls per question    (default: 20)
 
 Requires: Python 3.9+ and
@@ -546,7 +547,7 @@ def make_chat(client: Any) -> Any:
 
 def ask(chat: Any, question: str) -> str:
     """Send one question; retry once after a pause if the free-tier limit is hit."""
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             resp = chat.send_message(question)
             text = resp.text or ""
@@ -558,9 +559,14 @@ def ask(chat: Any, question: str) -> str:
             msg = str(exc)
             if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and "per day" in msg.lower():
                 raise RuntimeError("The free daily Gemini limit is used up for today; try again tomorrow.") from exc
-            if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 2:
+            if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 4:
                 wait = 65
                 print(f"[free-tier limit reached; waiting {wait} seconds and trying again]", flush=True)
+                time.sleep(wait)
+                continue
+            if ("503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower()) and attempt < 4:
+                wait = 20 * (attempt + 1)
+                print(f"[the model is busy at Google; waiting {wait} seconds and trying again]", flush=True)
                 time.sleep(wait)
                 continue
             raise
