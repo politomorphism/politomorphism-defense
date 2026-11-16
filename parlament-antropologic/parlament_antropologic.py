@@ -23,7 +23,10 @@ Folosire (din folderul in care se afla acest fisier):
     python parlament_antropologic.py --dry-run    descarca si citeste, fara model, fara cost
     python parlament_antropologic.py --only B573  doar proiectul B573
     python parlament_antropologic.py --probe      salveaza paginile Senatului pentru diagnostic
-    python parlament_antropologic.py --model gemini-3.5-flash-lite   alt model gratuit, daca primul e ocupat
+    python parlament_antropologic.py --model gemini-3.5-flash-lite   doar modelul ales, fara trecere automata
+
+Daca modelul principal ramane aglomerat (eroarea 503), programul trece singur pe
+gemini-3.5-flash-lite pentru proiectul respectiv si noteaza asta in raport.
 
 Setari (variabile de mediu, toate optionale in afara de cheie):
     GEMINI_API_KEY          cheia Gemini din Google AI Studio (obligatorie, cu
@@ -78,6 +81,8 @@ MODEL = os.environ.get("PA_MODEL", "gemini-3.8-flash")
 MODEL_PAUSE = float(os.environ.get("PA_PAUSE", "6"))
 PROMPT_VERSION = "2026-11-16.2"
 DEFAULT_MODEL = "gemini-3.8-flash"
+FALLBACK_MODEL = "gemini-3.5-flash-lite"   # folosit automat când modelul principal e aglomerat
+AUTO_FALLBACK = True                       # oprit când utilizatorul alege singur --model
 
 MAX_TEXT_CHARS = 60000      # longer memoranda are cut; the report says so
 MIN_TEXT_CHARS = 200        # below this the PDF has no usable text layer
@@ -549,7 +554,7 @@ def fetch_project(session: Any, item: Dict[str, Any]) -> Dict[str, Any]:
 # Model reading
 # --------------------------------------------------------------------------
 
-def _gemini_call(client: Any, user: str, with_schema: bool) -> Any:
+def _gemini_call(client: Any, model: str, user: str, with_schema: bool) -> Any:
     from google.genai import types
 
     if with_schema:
@@ -562,16 +567,22 @@ def _gemini_call(client: Any, user: str, with_schema: bool) -> Any:
                                           response_mime_type="application/json")
         contents = (user + "\n\nRăspunde cu un singur obiect JSON care respectă exact această schemă:\n"
                     + json.dumps(SCHEMA, ensure_ascii=False))
-    return client.models.generate_content(model=MODEL, contents=contents, config=cfg)
+    return client.models.generate_content(model=model, contents=contents, config=cfg)
 
 
-def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
-    text = item["text"]
-    truncated = len(text) > MAX_TEXT_CHARS
-    body = text[:MAX_TEXT_CHARS]
-    key = hashlib.sha256(f"{PROMPT_VERSION}|{MODEL}|{body}".encode("utf-8")).hexdigest()[:16]
-    cache_path = CACHE / "lecturi" / f"B{item['nr']}_{item['year']}_{key}.json"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+class ModelBusy(RuntimeError):
+    """The model stayed overloaded (503) or timed out after all retries."""
+
+
+def _cache_path(item: Dict[str, Any], model: str, body: str) -> Path:
+    key = hashlib.sha256(f"{PROMPT_VERSION}|{model}|{body}".encode("utf-8")).hexdigest()[:16]
+    path = CACHE / "lecturi" / f"B{item['nr']}_{item['year']}_{key}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _read_once(client: Any, model: str, item: Dict[str, Any], body: str, truncated: bool) -> Dict[str, Any]:
+    cache_path = _cache_path(item, model, body)
     if cache_path.exists():
         return json.loads(cache_path.read_text(encoding="utf-8"))
 
@@ -581,27 +592,36 @@ def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
         "Textul expunerii de motive (extras automat din PDF, poate conține greșeli de scanare; "
         "citează-le exact așa cum apar):\n\n" + body
     )
+    say(f"    citesc cu {model} ...")
     time.sleep(MODEL_PAUSE)
     with_schema = True
     resp = None
-    for attempt in range(4):
+    busy_tries = 0
+    attempt = 0
+    while True:
+        attempt += 1
         try:
-            resp = _gemini_call(client, user, with_schema)
+            resp = _gemini_call(client, model, user, with_schema)
             break
         except Exception as exc:
             msg = str(exc)
-            if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 3:
+            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
                 if "per day" in msg.lower() or "perday" in msg.lower().replace(" ", ""):
                     raise RuntimeError("limita zilnică gratuită Gemini a fost atinsă; reia mâine "
                                        "(lecturile făcute deja rămân în cache)") from exc
-                say("    limita pe minut a fost atinsă; aștept 65 de secunde")
-                time.sleep(65)
-                continue
+                if attempt <= 3:
+                    say("    limita pe minut a fost atinsă; aștept 65 de secunde")
+                    time.sleep(65)
+                    continue
+                raise
             if any(k in msg for k in ("503", "UNAVAILABLE", "504", "DEADLINE", "timed out", "Timeout",
-                                      "ReadTimeout", "ConnectTimeout")) and attempt < 3:
-                say(f"    modelul este ocupat la Google; aștept {20 * (attempt + 1)} de secunde")
-                time.sleep(20 * (attempt + 1))
-                continue
+                                      "ReadTimeout", "ConnectTimeout")):
+                busy_tries += 1
+                if busy_tries <= 3:
+                    say(f"    {model} este aglomerat la Google; aștept {20 * busy_tries} de secunde")
+                    time.sleep(20 * busy_tries)
+                    continue
+                raise ModelBusy(f"{model} a rămas aglomerat după trei încercări") from exc
             if with_schema and ("400" in msg or "INVALID_ARGUMENT" in msg) and "schema" in msg.lower():
                 with_schema = False      # older models: schema in the prompt instead
                 continue
@@ -614,13 +634,27 @@ def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
     reading.setdefault("comunitate_imaginata", {"noi": "", "ei_sau_ceilalti": "", "categorii_create": []})
     usage = getattr(resp, "usage_metadata", None)
     reading["_meta"] = {
-        "model": MODEL, "prompt_version": PROMPT_VERSION, "schema_enforced": with_schema,
+        "model": model, "prompt_version": PROMPT_VERSION, "schema_enforced": with_schema,
         "truncated": truncated, "date": dt.datetime.now().isoformat(timespec="seconds"),
         "input_tokens": getattr(usage, "prompt_token_count", None),
         "output_tokens": getattr(usage, "candidates_token_count", None),
     }
     cache_path.write_text(json.dumps(reading, ensure_ascii=False, indent=1), encoding="utf-8")
     return reading
+
+
+def read_with_model(client: Any, item: Dict[str, Any]) -> Dict[str, Any]:
+    """Read with the chosen model; if it stays overloaded, switch automatically to the lighter one."""
+    text = item["text"]
+    truncated = len(text) > MAX_TEXT_CHARS
+    body = text[:MAX_TEXT_CHARS]
+    try:
+        return _read_once(client, MODEL, item, body, truncated)
+    except ModelBusy:
+        if not AUTO_FALLBACK or MODEL == FALLBACK_MODEL:
+            raise
+        say(f"    trec automat pe modelul mai ușor {FALLBACK_MODEL}")
+        return _read_once(client, FALLBACK_MODEL, item, body, truncated)
 
 
 def verify_quotes(reading: Dict[str, Any], text: str) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -702,7 +736,7 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     doc.add_heading("Cum se citește acest raport", 1)
     doc.add_paragraph(
         "Pentru fiecare proiect, expunerea de motive a fost descărcată de pe senat.ro și citită de un model "
-        f"de limbaj ({MODEL}), cu instrucțiunea de a face o lectură antropologică descriptivă pe șaptesprezece "
+        f"de limbaj Gemini (modelul folosit e trecut la fiecare proiect), cu instrucțiunea de a face o lectură antropologică descriptivă pe șaptesprezece "
         "variabile: comunitatea imaginată, granițele apartenenței, relația dintre stat și cetățean, distribuția "
         "puterii, economia morală, temporalitatea, memoria, spațiul, corpul, registrul simbolic, resemnificarea "
         "termenilor, legitimarea, cunoașterea invocată, registrul afectiv, performativitatea, dispozitivele "
@@ -717,14 +751,20 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
         "astfel de lectură, nu un risc. Recunoașterea dispozitivelor retorice de către modele de limbaj nu este "
         "validată pe limba română și depinde mult de prezența unor marcatori expliciți; o tehnică nesemnalată "
         "poate fi totuși prezentă.")
-    if MODEL != DEFAULT_MODEL:
+    light = [i["id"] for i in items
+             if i.get("reading") and i["reading"].get("_meta", {}).get("model", MODEL) != DEFAULT_MODEL]
+    if light:
+        used = sorted({i["reading"]["_meta"].get("model", MODEL) for i in items
+                       if i.get("reading") and i["id"] in light})
         warn = doc.add_paragraph()
         warn.add_run("Atenție la model. ").bold = True
-        warn.add_run(f"Această lectură a fost făcută cu {MODEL}, nu cu modelul principal {DEFAULT_MODEL}, de "
-                     "obicei pentru că acesta era aglomerat. Modelele mai ușoare tind să vadă mai puțin din ce e "
-                     "implicit, așa că lecturile pot fi mai superficiale. Pentru o lectură mai fină, rulează din "
-                     "nou programul fără opțiunea --model când modelul principal e disponibil; lecturile noi se "
-                     "fac separat și nu le înlocuiesc pe cele vechi din cache.")
+        subj = (f"Proiectul {light[0]} a fost citit" if len(light) == 1
+                else f"Proiectele {', '.join(light)} au fost citite")
+        warn.add_run(f"{subj} cu {', '.join(used)}, nu cu modelul principal "
+                     f"{DEFAULT_MODEL}, de obicei pentru că acesta era aglomerat la Google. Modelele mai ușoare "
+                     "tind să vadă mai puțin din ce e implicit, așa că lectura pot fi mai superficiale. "
+                     "La o rulare ulterioară programul încearcă din nou modelul principal; lecturile noi se fac "
+                     "separat și nu le înlocuiesc pe cele vechi din cache.")
 
     if dry_run:
         doc.add_paragraph("Rulare de probă: expunerile de motive au fost descărcate, dar nu au fost citite "
@@ -738,12 +778,17 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
         return dt.date.fromisoformat(d).strftime("%d.%m.%Y") if d else "—"
 
     doc.add_heading("Pe scurt", 1)
-    table = doc.add_table(rows=1, cols=4)
-    table.style = "Light Grid Accent 1"
-    for c, t in zip(table.rows[0].cells, ["Proiect", "Ce propune", "Termen consultare", "Interes antropologic"]):
-        c.text = t
-    for it in (analysed if not dry_run else items):
-        row = table.add_row().cells
+    if not analysed and not dry_run:
+        doc.add_paragraph("În această rulare niciun proiect nu a putut fi citit de model. Motivele sunt mai jos, "
+                          "la „Proiecte fără lectură”. Rulează programul din nou mai târziu.").runs[0].bold = True
+    table = doc.add_table(rows=1, cols=4) if (analysed or dry_run) else None
+    if table is not None:
+        table.style = "Light Grid Accent 1"
+        for c, t in zip(table.rows[0].cells, ["Proiect", "Ce propune", "Termen consultare",
+                                              "Interes antropologic"]):
+            c.text = t
+    for it in ((analysed if not dry_run else items) if table is not None else []):
+        row = table.add_row().cells  # type: ignore[union-attr]
         row[0].text = it["id"]
         row[1].text = (it["reading"]["rezumat"] if it.get("reading") else it.get("title", ""))[:300]
         row[2].text = fmt_date(it.get("deadline"))
@@ -788,6 +833,7 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
         bits = [f"Termen consultare: {fmt_date(it.get('deadline'))}",
                 f"Inițiatori (din fișa Senatului): {it['initiators']}" if it.get("initiators") else None,
                 f"Expunerea de motive: {it.get('em_url', '')}",
+                f"Citit cu: {rd.get('_meta', {}).get('model', MODEL)}",
                 f"Fișa proiectului: {it.get('page_url', '')}" if it.get("page_url") else None]
         meta.add_run("\n".join(b for b in bits if b)).font.size = Pt(9)
 
@@ -880,8 +926,11 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
                               style="List Bullet")
 
     rejected_all = [(it["id"], r) for it in analysed for r in it.get("rejected", [])]
-    doc.add_heading("Anexă: citate care nu au putut fi verificate", 1)
-    if rejected_all:
+    if analysed:
+        doc.add_heading("Anexă: citate care nu au putut fi verificate", 1)
+    if not analysed:
+        pass
+    elif rejected_all:
         doc.add_paragraph("Modelul a propus aceste citate, dar ele nu apar în textul expunerii de motive. "
                           "Observațiile corespunzătoare au fost scoase din raport (la clasificările unice s-a "
                           "păstrat doar clasificarea, fără citat).")
@@ -893,7 +942,8 @@ def write_report(items: List[Dict[str, Any]], skipped: List[Dict[str, Any]], dry
     tok_in = sum((it["reading"].get("_meta", {}).get("input_tokens") or 0) for it in analysed)
     tok_out = sum((it["reading"].get("_meta", {}).get("output_tokens") or 0) for it in analysed)
     foot = doc.add_paragraph()
-    foot.add_run(f"Model: {MODEL} (Gemini API), versiunea instrucțiunilor {PROMPT_VERSION}. Tokeni: "
+    models_used = sorted({it["reading"].get("_meta", {}).get("model", MODEL) for it in analysed}) or [MODEL]
+    foot.add_run(f"Model: {', '.join(models_used)} (Gemini API), versiunea instrucțiunilor {PROMPT_VERSION}. Tokeni: "
                  f"{tok_in} la intrare, {tok_out} la ieșire (lecturile luate din cache nu se mai cer "
                  "a doua oară).").font.size = Pt(8)
     foot.runs[0].font.color.rgb = RGBColor(0x66, 0x66, 0x66)
@@ -927,9 +977,10 @@ def main() -> int:
     ap.add_argument("--probe", action="store_true", help="salvează paginile Senatului pentru diagnostic")
     ap.add_argument("--model", help="alt model Gemini gratuit, de exemplu gemini-3.5-flash-lite")
     args = ap.parse_args()
-    global MODEL
+    global MODEL, AUTO_FALLBACK
     if args.model:
         MODEL = args.model
+        AUTO_FALLBACK = False
 
     try:
         import requests
@@ -1010,8 +1061,14 @@ def main() -> int:
             continue
         try:
             reading = read_with_model(client, it)
+        except ModelBusy:
+            it["skip_reason"] = ("modelele Gemini gratuite au fost aglomerate la Google în acest moment; "
+                                 "rulează din nou mai târziu")
+            say(f"    {it['skip_reason']}")
+            skipped.append(it)
+            continue
         except Exception as exc:
-            it["skip_reason"] = f"eroare la model: {exc}"
+            it["skip_reason"] = f"eroare la model: {str(exc)[:200]}"
             say(f"    {it['skip_reason']}")
             skipped.append(it)
             continue
