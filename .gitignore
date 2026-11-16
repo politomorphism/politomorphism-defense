@@ -20,3 +20,9 @@ Thumbs.db
 # CoCoLoFa comment text for the pre-registered test: local only, never re-hosted.
 benchmark/cocolofa_fd_eval_local.csv
 external/
+
+# Audit agent (agent/): local session id, uploaded knowledge and downloaded reports
+agent/.cpa_session
+agent/knowledge/
+agent/outputs/
+.env
