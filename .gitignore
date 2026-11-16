@@ -26,3 +26,5 @@ agent/.cpa_session
 agent/knowledge/
 agent/outputs/
 .env
+agent/repo/
+agent/repo_tmp/

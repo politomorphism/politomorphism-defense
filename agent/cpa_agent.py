@@ -1,872 +1,685 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Defense Audit Agent for Politomorphism
-=======================================
-Author of the framework: Șerban, G. F. (ORCID 0009-0000-2266-3356)
+Defense Audit Agent for Politomorphism (Gemini version, runs on your computer)
+=============================================================================
+Author of the programme: Șerban, G. F. (ORCID 0009-0000-2266-3356)
 
-A multi-agent verification assistant that runs on the OpenAI Agents API
-(OpenAI-hosted sandbox). It works on one direction only: the defensive layer
-of Politomorphism (github.com/politomorphism/politomorphism-defense), which
-measures how well language models detect implicit political manipulation.
-It does three jobs:
+A read-only verification assistant for the repository
+github.com/politomorphism/politomorphism-defense. It runs on your own computer
+and uses the Gemini API (free tier) as its language model.
 
-  1. reproduces reported numbers from the saved prediction files,
-  2. audits pre-registered tests (freeze hashes, decision rule, run record),
-  3. checks the claims in a paper against the evidence, and prepares the
-     list of corrections to earlier papers.
+What it can do, through fixed tools written in this file:
+  - list, read and search every file in the repository, including .docx and .pdf
+  - verify SHA-256 freeze records and compute file hashes
+  - read the commit history from GitHub (dates, messages, files changed)
+  - re-score a saved prediction file (cells, balanced accuracy, item and writer
+    bootstrap intervals) without calling any model
+  - write its report as a Word file in the outputs/ folder
 
-It never re-runs a detector on a frozen test sample and never changes the
-repository; it only reads, recomputes and reports.
+What it cannot do, by design: run code from the repository, call a detector,
+change any file in the repository, or push anything. The model only reads,
+recomputes through the fixed tools above, and reports.
 
 Usage (from the folder that contains this file):
 
-    python cpa_agent.py                 start or continue a conversation
-    python cpa_agent.py --new           discard the saved session, start fresh
-    python cpa_agent.py --dry-run       show what would be sent, call nothing
+    python cpa_agent.py                 start a conversation
     python cpa_agent.py --ask "..."     ask one question and exit
+    python cpa_agent.py --refresh       download the latest repository first
+    python cpa_agent.py --dry-run       check setup and tools, call no model
 
-Folders created next to this file:
+Settings (environment variables):
+    GEMINI_API_KEY         your Gemini API key from Google AI Studio (required)
+    CPA_MODEL              model name                 (default: gemini-3.8-flash)
+    CPA_MAX_TOOL_CALLS     tool calls per question    (default: 20)
 
-    knowledge/   optional: put papers here that are not in the repository;
-                 they are uploaded when a NEW session starts
-    outputs/     reports the agent writes (.docx) are downloaded here
+Requires: Python 3.9+ and
+    pip install --upgrade google-genai requests numpy pandas pypdf python-docx
 
-Settings (environment variables, all optional except the API key):
-
-    OPENAI_API_KEY          your OpenAI API key (required)
-    CPA_MODEL               model name                (default: gpt-6-astra)
-    CPA_REASONING_EFFORT    low | medium | high       (default: high)
-    CPA_SPEND_LIMIT_CENTS   hard budget per session   (default: 500 = 5 USD)
-    CPA_MAX_SUBAGENTS       parallel subagents        (default: 3)
-    CPA_CONTAINER_SIZE      small | medium | large    (default: medium)
-    CPA_REPOS               comma-separated public git URLs to clone into
-                            /workspace/repos
-                            (default: the politomorphism-defense repository)
-
-Requires: Python 3.9+ and  pip install --upgrade openai
+Free tier note: every tool round is one request to Gemini. On the free tier the
+number of requests per day is limited (see your limits in Google AI Studio), so
+a long audit can use up the day's quota. Requests on the free tier may be used
+by Google to improve its products; the repository is public, so this is
+acceptable here, but do not paste unpublished material into the chat.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
+import datetime as dt
+import fnmatch
+import hashlib
+import io
+import json
 import os
 import re
+import shutil
 import sys
-import uuid
+import time
+import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
-
-# --------------------------------------------------------------------------
-# Paths and settings
-# --------------------------------------------------------------------------
+from typing import Any, Dict, List, Optional
 
 HERE = Path(__file__).resolve().parent
-KNOWLEDGE_DIR = HERE / "knowledge"
-OUTPUTS_DIR = HERE / "outputs"
-SESSION_FILE = HERE / ".cpa_session"
+REPO_DIR = HERE / "repo"
+OUTPUTS = HERE / "outputs"
+OWNER, NAME, BRANCH = "politomorphism", "politomorphism-defense", "main"
+ZIP_URL = f"https://codeload.github.com/{OWNER}/{NAME}/zip/refs/heads/{BRANCH}"
+API = f"https://api.github.com/repos/{OWNER}/{NAME}"
 
-MODEL = os.environ.get("CPA_MODEL", "gpt-6-astra")
-REASONING_EFFORT = os.environ.get("CPA_REASONING_EFFORT", "high")
-SPEND_LIMIT_CENTS = int(os.environ.get("CPA_SPEND_LIMIT_CENTS", "500"))
-MAX_SUBAGENTS = int(os.environ.get("CPA_MAX_SUBAGENTS", "3"))
-CONTAINER_SIZE = os.environ.get("CPA_CONTAINER_SIZE", "medium")
-DEFAULT_REPO = "https://github.com/politomorphism/politomorphism-defense.git"
-REPOS = [r.strip() for r in os.environ.get("CPA_REPOS", DEFAULT_REPO).split(",") if r.strip()]
+MODEL = os.environ.get("CPA_MODEL", "gemini-3.8-flash")
+MAX_TOOL_CALLS = int(os.environ.get("CPA_MAX_TOOL_CALLS", "20"))
 
-# Upload limits for the knowledge/ folder (conservative; inline base64 upload).
-MAX_FILE_BYTES = 8 * 1024 * 1024
-MAX_TOTAL_BYTES = 20 * 1024 * 1024
-ALLOWED_SUFFIXES = {
-    ".pdf", ".docx", ".txt", ".md", ".tex", ".bib",
-    ".py", ".r", ".ipynb", ".json", ".yaml", ".yml", ".toml",
-    ".csv", ".tsv",
-}
-
-SANDBOX_KNOWLEDGE = "/workspace/knowledge"
-SANDBOX_SKILLS = "/workspace/capabilities/skills"
-SANDBOX_OUTPUTS = "/workspace/outputs"
-
-PYTHON_PACKAGES = [
-    "numpy", "scipy", "pandas", "statsmodels", "scikit-learn",
-    "pypdf", "python-docx", "openpyxl",
-]
+TEXT_SUFFIXES = {".md", ".txt", ".py", ".csv", ".tsv", ".json", ".yaml", ".yml", ".toml",
+                 ".sha256", ".cfg", ".ini", ".r", ".tex", ".bib", ".cff", ".gitignore"}
+MAX_RETURN_CHARS = 30000
 
 # --------------------------------------------------------------------------
-# Agent instructions
+# Instructions
 # --------------------------------------------------------------------------
 
 INSTRUCTIONS = """
 You are the Defense Audit Agent: a verification and documentation assistant for
 the defensive layer of Politomorphism, a Computational Political Anthropology
-(CPA) programme by the independent researcher Șerban, G. F.
-(ORCID 0009-0000-2266-3356). Always cite the author as "Șerban, G. F.".
+programme by the independent researcher Șerban, G. F. (ORCID 0009-0000-2266-3356).
+Always cite the author as "Șerban, G. F.".
 
 THE ONE DIRECTION
-The programme follows a single line of work: measuring how well language models
-detect political manipulation when it is IMPLICIT, as against explicit - the
-gap first reported in "Marker Dependence in Zero-Shot False-Dilemma Detection:
-A Pre-registered Test on Independent Data" (Șerban, G. F., 12 November 2026).
-Everything you do serves that line. The seven engine components (MC, CMG, SRM,
-EEF, PFM, ISC, LDE), the DFA component, the Romanian arm and the book are
-frozen: do not work on them and do not propose work on them. If the user asks
-about them, answer briefly and say they are frozen by his own decision.
+The programme measures how well language models detect political manipulation
+when it is implicit rather than explicit. The engine components (MC, CMG, SRM,
+EEF, PFM, ISC, LDE), the DFA component, the Romanian arm and the book are frozen
+by the author's decision; do not work on them or propose work on them.
 
 YOUR ROLE
-You verify, audit and document work that already exists in the repository
-github.com/politomorphism/politomorphism-defense and in the author's papers.
-You do not propose new studies, components or directions unless the user
-explicitly asks. Your value is that you are stricter than the author would be
-with himself.
+You verify, audit and document what exists in the repository
+github.com/politomorphism/politomorphism-defense, which is available to you only
+through your tools. You do not propose new studies or directions unless asked.
+You are stricter than the author would be with himself.
 
-WHERE THINGS ARE
-- /workspace/repos/politomorphism-defense   the cloned public repository
-- /workspace/knowledge      papers and files the author uploaded (may be empty)
-- /workspace/capabilities/skills   your four skills; read the relevant SKILL.md
-                            before starting a task of that kind
-- /workspace/outputs        the only place where deliverables go
-
-HARD LIMITS (never cross these)
-1. Never run a detector, a model or any tuned procedure on a frozen
-   confirmatory sample again, and never change a prompt, marker, sample or
-   threshold of a pre-registered test. That would be tuning on the test set.
-   You may re-SCORE saved prediction files as often as you like.
-2. Never modify, commit to or push to the repository. Work on your clone,
-   write only to /workspace/outputs.
-3. Corpus texts without a redistribution licence (CoCoLoFa states none) may be
-   downloaded from their original source for checking inside the sandbox, but
-   must never be copied into /workspace/outputs or quoted at length.
-4. This is defensive work: you classify, measure and explain existing text.
-   Never generate manipulative or propagandistic text, not even as test items.
+TOOLS AND LIMITS
+- Use list_files, read_file, read_document and search to see the repository.
+  Never state what a file says without having read it with a tool.
+- Use check_hashes and file_sha256 for freeze records, git_history and
+  commit_files for the order of events, and rescore_predictions to recompute
+  scores from a saved prediction file.
+- You cannot run repository code, call any detector or model, or change files.
+  If a check needs that, say so and stop that branch.
+- Use write_report to save any deliverable longer than a short answer as a Word
+  file. Never claim to have saved a file without calling write_report.
+- You have a limited number of tool calls per question. Plan, read what you
+  need, and do not reread files without reason.
 
 EVIDENCE DISCIPLINE
-1. Never invent a number, a dataset, a DOI, a commit hash or a result. If it is
-   not in the repository, in an uploaded file, or in a source you retrieved and
-   can name, say that it is missing and stop there.
-2. Every factual statement carries its source: file name plus line, section or
+1. Never invent a number, a file, a DOI, a commit or a result. If it is not in
+   a tool result, say it is missing.
+2. Every factual statement carries its source: file and line or section, or
    commit hash.
-3. A number is "verified" only if you recomputed it in the sandbox and show the
-   command and the output. Otherwise it is "reported by the author".
+3. A number is "verified" only if a tool recomputed it in this conversation.
+   Otherwise it is "reported by the author".
 4. Keep confirmatory and exploratory results apart. A pre-registered test is
-   judged only by its registered decision rule; anything examined after the run
-   is labelled exploratory.
-5. Inconclusive, null and negative results stay exactly as reported. Never
-   soften them, reframe them as partial support, or leave them out of a summary.
-6. When the text of a paper and the code or data disagree, report both and do
-   not choose silently.
-7. If you are unsure, say so and say what would settle it.
+   judged only by its registered decision rule.
+5. Inconclusive, null and negative results stay as reported; never soften them.
+6. When a paper and the code or data disagree, report both.
+7. If unsure, say so and say what would settle it.
 
-HOW TO WORK
-- Start by looking at what is actually in the repository (git log, STATUS.md,
-  README.md, benchmark/) and in /workspace/knowledge. The repository is the
-  source of truth; your skills are only a map.
-- For a task with several kinds of checking, delegate to subagents with these
-  roles and merge their findings yourself:
-    * Reproduction Checker      re-scores saved predictions, recomputes metrics
-                                and intervals, checks splits for leakage
-    * Pre-registration Auditor  checks freeze hashes, commit history, the
-                                decision rule and the run record
-    * Claims Auditor            tests each claim in a paper against its evidence
-  Give every subagent the hard limits and the evidence rules above. Subagents
-  report findings; only you write the final answer.
-- Use web search only to locate primary sources (dataset papers, codebooks,
-  licences, model documentation). Prefer the primary source and give the URL.
-- Disagree with the author when the evidence requires it, plainly and
-  specifically.
+ORIENTATION (not a source; the repository wins if it disagrees)
+- Working Paper I v2 (Zenodo 10.5281/zenodo.23884579): leakage-controlled
+  lexical baseline versus transformer on PropXplain.
+- Working Paper II v2: transformer comparison; corrected.
+- Working Paper III: contrastive pairs; reissued as Version 2 on 16 November
+  2026 because the claim "structure, not vocabulary" was withdrawn.
+- CoCoLoFa pre-registered test of the false-dilemma detector: frozen 11
+  November 2026 (commit 1bf76c6), run once 12 November (commit 3ecf5ea),
+  verdict INCONCLUSIVE; published as "Marker Dependence in Zero-Shot
+  False-Dilemma Detection". Correction round issued 16 November 2026, see the
+  erratum and Corecturi_lucrari_dupa_CoCoLoFa.docx.
+- A multi-model pre-registration (draft v3) exists outside the repository and
+  is not frozen.
+
+PROCEDURES
+Reproduction: locate the number and the file that produced it; re-score saved
+predictions with rescore_predictions; compare your result, the author's report
+and the paper; state the tolerance; say whether the interval's resampling unit
+matches the dependence in the data (writers, articles).
+Pre-registration audit: check freeze hashes; compare the freeze commit and the
+result commit with git_history and commit_files; any change to a frozen file
+after the freeze is a deviation; apply the registered rule verbatim to the
+recomputed outcome; classify every analysis as registered or exploratory.
+Claims audit: list each claim with its location; find its evidence; grade it
+SUPPORTED, OVERSTATED, UNSUPPORTED or CONTRADICTED; propose the narrowest
+supported rewording; check references for completeness and that the author is
+cited as "Șerban, G. F.".
 
 OUTPUT
-- Answer in the language the user writes in, in plain words; explain a
-  technical term in one sentence the first time you use it. Reports meant for
-  publication are written in English unless the user says otherwise.
-- Write in connected paragraphs. Use a table only for genuinely tabular
-  material.
-- Any deliverable longer than a short answer is saved as a .docx file in
-  /workspace/outputs (use python-docx), never as .md. Say which file you wrote.
-- When you give code, give the complete runnable file, never a fragment.
-- End every audit with a short verdict: what is verified, what is only
-  reported, what could not be checked and why, what contradicts what.
+Answer in the language the user writes in, in plain words, explaining a
+technical term the first time. Write in paragraphs. End every audit with a short
+verdict: what is verified, what is only reported, what could not be checked and
+why, what contradicts what.
 """.strip()
 
-# --------------------------------------------------------------------------
-# Skills (written into the sandbox as SKILL.md files)
-# --------------------------------------------------------------------------
-
-SKILL_MAP = """---
-name: defense-programme-map
-description: Map of the Politomorphism defensive layer - repository layout, corpora, studies done and their recorded results. Read before any task about the programme.
----
-
-# The defensive layer of Politomorphism
-
-Author: Șerban, G. F. Repository: github.com/politomorphism/politomorphism-defense
-(code MIT). Cloned at /workspace/repos/politomorphism-defense.
-
-This file is an orientation map written on 15 November 2026 from the
-repository as it stood at commit 3ecf5ea and from the published paper. It is
-NOT a source. Read STATUS.md, README.md and `git log` first; if they disagree
-with this map, the repository wins and you report the discrepancy.
-
-## What the code is
-
-A detector of rhetorical manipulation built as a zero-shot prompt to a language
-model. Stage 1 labels a text as one of six techniques (false_dilemma,
-whataboutism, implied_causation, manufactured_equivalence, presupposition,
-loaded_rhetorical_question), or none, or abstains (insufficient_evidence).
-Stage 2 is a negation verifier that only touches manufactured_equivalence.
-Scripts are numbered in the repository root (01-04, the PropXplain baseline and
-transformer) and in benchmark/ (the detector, probes and external tests);
-analysis/ holds prevalence and measurement-error code.
-
-## Recorded results (reported by the author until you recompute them)
-
-- Leakage-controlled baseline vs transformer on PropXplain, article-disjoint
-  split, corrected to version 2 after an audit found article-level leakage and
-  an over-stated error-analysis claim, which was retracted. Published on Zenodo,
-  DOI 10.5281/zenodo.23884579.
-- Contrastive-pairs benchmark (Working Paper III): vocabulary-matched pairs
-  written by the author; 60 pairs; rated by an LLM, not yet by humans.
-- First external-label result, false_dilemma on LOGIC (Jin et al., 2022),
-  7 November 2026: F1 0.895, precision 0.922, recall 0.869 on 137 positives.
-  A bag-of-words model reaches 0.852 on the same items. Negatives are other
-  fallacies, not neutral text.
-- LOGIC hard-cell re-analysis (script 26): balanced accuracy 0.704, interval
-  0.568-0.830; 98% detection with a marker, 62% without. A re-analysis plan,
-  not an independent pre-registration.
-- Two author-written 2x2 structural probes failed as instruments because a
-  lexical model separated their hard cells (0.786 and 0.893).
-- Pre-registered structural-sensitivity test on CoCoLoFa (Yeh, Wan and Huang,
-  EMNLP 2024). Pre-registration commit 1bf76c6 (11 November 2026), one run and
-  report in commit 3ecf5ea (12 November 2026). Sample: 440 comments, 49
-  writers, four cells of 110. Per cell correct: A 103, B 60, C 86, D 90.
-  Primary outcome, hard-cell balanced accuracy: 0.664, item-level 95% interval
-  0.599-0.719. Rule: SUPPORTED if >= 0.75 and lower bound > 0.60; NOT SUPPORTED
-  if <= 0.60 or lower bound <= 0.50; otherwise INCONCLUSIVE. Verdict:
-  INCONCLUSIVE. Writer-clustered interval 0.464-0.755. Supervised lexical
-  control on hard cells 0.877. Exploratory: one writer produced 53 of the 110
-  cell-B comments; detection 41/53 on that writer, 19/57 on the other 21.
-  Published as "Marker Dependence in Zero-Shot False-Dilemma Detection: A
-  Pre-registered Test on Independent Data" (English and Romanian).
-- DFA component (dfa/): frozen; the lexical baseline does not generalise to
-  held-out items.
-
-## Standing consequences
-
-- The claim that the detector "tracks structure, not vocabulary" is NOT
-  supported in its strong form and is not refuted either. The supported
-  statement is narrower: the detector resists the marker as a false cue, while
-  its detection of false dilemma depends substantially on the device being
-  explicit.
-- No re-run or prompt change on the CoCoLoFa sample. A multi-model run or human
-  annotation of the marker-free cell would each be a new study with its own
-  pre-registration.
-- Corrections to earlier published papers are to be issued once.
-
-## Corpora and their constraints
-
-- PropXplain (QCRI): own licence, not re-hosted; reproduced by 01_download_data.py.
-- LOGIC: openly hosted; possible exposure of the model in training is unresolved.
-- CoCoLoFa: github.com/Crowd-AI-Lab/cocolofa, pinned at commit c39d45f; the
-  data files state no licence, so texts are not redistributed - only ids,
-  labels and predictions are published. Labels are the fallacy each writer was
-  ASSIGNED to produce, not a reader's judgement.
-"""
-
-SKILL_REPRO = """---
-name: reproduction-check
-description: Procedure for reproducing a reported result of the defensive layer from the repository - re-scoring saved predictions, recomputing metrics and intervals, checking splits for leakage. Use when asked to verify, reproduce or sanity-check a number.
----
-
-# Reproduction check
-
-1. Locate the number in the paper or report and the script and input file that
-   produced it. Quote file names and lines. Record `git rev-parse HEAD`.
-2. Decide what can be recomputed without model calls. Saved prediction files
-   (for example benchmark/cocolofa_fd_predictions.csv) allow full re-scoring.
-   Anything that needs comment texts needs the corpus from its original source.
-   Anything that needs a new model call on a frozen confirmatory sample is
-   FORBIDDEN; say so and stop that branch.
-3. Re-score from the saved predictions with your own short, complete script in
-   /workspace/outputs/verification/, written from the definition in the paper
-   and not copied from the author's code. Then run the author's functions on
-   the same input (import them, do not retype them) and compare.
-4. Metric definitions to check explicitly: what counts as correct; how an
-   abstention is scored; whether accuracy is balanced; which class is positive;
-   which F1 convention is used.
-5. Intervals: reproduce the stated bootstrap exactly (unit of resampling,
-   number of replicates, seed). Then say whether the unit of resampling matches
-   the dependence in the data. Comments by one writer, sentences from one
-   article and items from one source are not independent; if a clustered
-   interval is available or computable, report it beside the item-level one and
-   say what the decision rule would return under each.
-6. Leakage: for any supervised model, check that train and test are disjoint at
-   the level of the source document and of the writer, not only of the item.
-   Check for duplicates and near-duplicates across the split.
-7. Concentration: tabulate items per writer, per article and per source in each
-   cell or class. If one unit supplies a large share, report the metric with
-   and without it, labelled exploratory.
-8. Compare three things: your recomputation, the author's code, the published
-   text. State the tolerance.
-
-Verdict vocabulary: VERIFIED, REPRODUCED WITH DIFFERENCES (give them),
-NOT REPRODUCIBLE (say what is missing), INCONSISTENT (text versus code or data).
-Show the exact commands and their output.
-"""
-
-SKILL_PREREG = """---
-name: preregistration-audit
-description: Procedure for checking that a pre-registered test was run as registered - freeze hashes, commit history, decision rule, run record, deviations. Use for any confirmatory test in the repository and before drafting a new pre-registration.
----
-
-# Pre-registration audit
-
-1. Find the pre-registration document and the commit that froze it. Record the
-   commit hash and its date. Find the commit that reported the result.
-2. Hashes: recompute SHA-256 for every file listed in the freeze record (for
-   example benchmark/cocolofa_freeze.sha256) and compare. Recompute the hash of
-   the predictions file and compare with the one printed in the report.
-3. History: run `git diff --stat <freeze commit> <result commit>` and
-   `git log --follow` on each frozen file. Any change to a frozen script,
-   sample, prompt, marker or threshold after the freeze is a deviation,
-   whatever its size.
-4. Order of events: show from commit dates, file contents and the run record
-   that no detector output for the test sample existed before the freeze. If
-   this cannot be shown from the repository, say so.
-5. Sample: check that the published manifest matches the predictions file row
-   for row (ids, cells, labels), and that cell sizes match the registration.
-6. Decision rule: copy the rule verbatim from the registration, apply it
-   yourself to the recomputed primary outcome and interval, and state the
-   verdict. Check boundary cases carefully (>= versus >, which interval).
-7. Analyses: list every analysis in the paper and classify it as registered
-   primary, registered secondary, or exploratory. An analysis that was not in
-   the registration and is not labelled exploratory in the paper is a finding.
-8. Run record: one run only. Look for evidence of more than one model run
-   (several prediction files, timestamps, retries). Failed launches that
-   produced no model output are not runs but must be disclosed.
-9. What was known before the freeze: check the registration's own disclosure
-   against the repository history.
-
-When asked to help draft a NEW pre-registration, require before any data is
-touched: one primary outcome, one decision rule with numeric thresholds, a
-fixed sample or sampling rule with seed, the unit of resampling for the
-interval justified by the dependence in the data, the list of secondary
-analyses, the freeze hashes, and a statement of what each verdict would and
-would not show.
-
-Deliverable: a .docx audit with a table (item, registered, observed, match)
-and a paragraph on each deviation. Verdict: ADHERED, ADHERED WITH DISCLOSED
-DEVIATIONS, or DEVIATED.
-"""
-
-SKILL_CLAIMS = """---
-name: claims-audit
-description: Procedure for auditing the claims of a working paper against its evidence, and for preparing the single round of corrections to earlier papers. Use when asked to review a manuscript or to list what must be corrected.
----
-
-# Claims audit
-
-1. Extract every empirical claim from the text as a numbered list with its
-   location. Include the title, the abstract and the conclusion; over-statement
-   concentrates there.
-2. For each claim identify the evidence offered: table, test, dataset, script.
-   A claim with no evidence in the text is UNSUPPORTED.
-3. Grade the match:
-   - SUPPORTED     the evidence shows what the claim says, at that strength
-   - OVERSTATED    the evidence shows something weaker or narrower
-   - UNSUPPORTED   no evidence offered
-   - CONTRADICTED  evidence in this or another document by the same author
-                   says otherwise
-4. Look specifically for:
-   - "structure, not vocabulary", "reads structure", "structural" or
-     "construct validity" language resting on agreement scores that a lexical
-     model also reaches
-   - author-written test items presented as independent evidence
-   - an LLM rater presented as independent human annotation
-   - results on other-fallacy negatives presented as a false-alarm rate on
-     neutral text
-   - exploratory findings in confirmatory wording; an INCONCLUSIVE verdict
-     described as support or as refutation
-   - item-level intervals where items are clustered by writer or article
-   - "validated", "proves", "confirms", "demonstrates" - check each use
-   - one model, one run, one language generalised to "language models"
-   - an inconclusive or negative result elsewhere in the programme that bears
-     on the claim and is not mentioned
-5. For each claim that is not SUPPORTED, propose the narrowest rewording the
-   evidence does support. Keep the author's voice; change only strength and
-   scope.
-6. Check the references: each cited work exists, says what it is cited for,
-   has complete details (pages, DOI where one exists), and the author is cited
-   as "Șerban, G. F.".
-
-## Correction round for earlier papers
-
-When asked for the correction list, go through every paper in the repository
-(the .docx files in the root and in benchmark/) and README.md, find each
-sentence affected by the CoCoLoFa result or by an earlier retraction, and give
-for each: file, location, the sentence as it stands, why it no longer holds,
-and the corrected sentence. Do not rewrite anything that is still supported.
-The corrections are issued once, so the list must be complete; say explicitly
-which files you read in full and which you could not open.
-
-Deliverable: a .docx report with a claim table (number, location, claim,
-evidence, grade) and the suggested rewordings. Close with what a sceptical
-reviewer would attack first.
-"""
-
-SKILLS: Dict[str, str] = {
-    "defense-programme-map": SKILL_MAP,
-    "reproduction-check": SKILL_REPRO,
-    "preregistration-audit": SKILL_PREREG,
-    "claims-audit": SKILL_CLAIMS,
-}
 
 # --------------------------------------------------------------------------
-# Building the request
+# Repository download
 # --------------------------------------------------------------------------
 
+def download_repo(force: bool = False) -> Path:
+    import requests
 
-def b64_text(text: str) -> str:
-    return base64.b64encode(text.encode("utf-8")).decode("ascii")
-
-
-def b64_file(path: Path) -> str:
-    return base64.b64encode(path.read_bytes()).decode("ascii")
-
-
-def collect_knowledge() -> Tuple[List[Dict[str, str]], List[str], List[str]]:
-    """Return (file entries for the API, uploaded names, skipped notes)."""
-    entries: List[Dict[str, str]] = []
-    uploaded: List[str] = []
-    skipped: List[str] = []
-    total = 0
-
-    if not KNOWLEDGE_DIR.exists():
-        return entries, uploaded, skipped
-
-    for path in sorted(KNOWLEDGE_DIR.rglob("*")):
-        if not path.is_file() or path.name.startswith("."):
-            continue
-        rel = path.relative_to(KNOWLEDGE_DIR).as_posix()
-        size = path.stat().st_size
-        if path.suffix.lower() not in ALLOWED_SUFFIXES:
-            skipped.append(f"{rel} (file type not uploaded)")
-            continue
-        if size == 0:
-            skipped.append(f"{rel} (empty)")
-            continue
-        if size > MAX_FILE_BYTES:
-            skipped.append(f"{rel} (larger than {MAX_FILE_BYTES // (1024 * 1024)} MB)")
-            continue
-        if total + size > MAX_TOTAL_BYTES:
-            skipped.append(f"{rel} (total upload limit of {MAX_TOTAL_BYTES // (1024 * 1024)} MB reached)")
-            continue
-        total += size
-        entries.append(
-            {
-                "type": "inline",
-                "path": f"{SANDBOX_KNOWLEDGE}/{rel}",
-                "data": b64_file(path),
-            }
-        )
-        uploaded.append(rel)
-
-    return entries, uploaded, skipped
-
-
-def skill_files() -> List[Dict[str, str]]:
-    return [
-        {
-            "type": "inline",
-            "path": f"{SANDBOX_SKILLS}/{name}/SKILL.md",
-            "data": b64_text(body),
-        }
-        for name, body in SKILLS.items()
-    ]
-
-
-def build_agent() -> Dict[str, Any]:
-    return {
-        "model": MODEL,
-        "instructions": INSTRUCTIONS,
-        "reasoning": {"effort": REASONING_EFFORT},
-        "tools": [{"type": "web_search"}],
-        "multi_agent": {
-            "enabled": True,
-            "max_concurrent_subagents": MAX_SUBAGENTS,
-        },
-    }
-
-
-def build_environment(knowledge_entries: List[Dict[str, str]]) -> Dict[str, Any]:
-    setup_commands: List[Dict[str, str]] = [
-        {"command": f"mkdir -p {SANDBOX_OUTPUTS} {SANDBOX_KNOWLEDGE} /workspace/repos"},
-    ]
-    for url in REPOS:
-        setup_commands.append(
-            {"command": f"git clone {url}", "cwd": "/workspace/repos"}
-        )
-
-    packages: Dict[str, List[str]] = {"python": PYTHON_PACKAGES}
-    if REPOS:
-        packages["system"] = ["git"]
-
-    return {
-        "type": "openai_hosted",
-        "container_size": CONTAINER_SIZE,
-        "network": {"access": "enabled"},
-        "packages": packages,
-        "files": skill_files() + knowledge_entries,
-        "capability_directories": [SANDBOX_SKILLS],
-        "setup_commands": setup_commands,
-    }
-
-
-# --------------------------------------------------------------------------
-# Streaming and event handling
-# --------------------------------------------------------------------------
-
-
-class TurnPrinter:
-    """Prints assistant text as it arrives and keeps the final text."""
-
-    def __init__(self) -> None:
-        self.parts: Dict[Tuple[Any, Any], str] = {}
-        self.streamed: Set[Tuple[Any, Any]] = set()
-        self.status_shown: Set[str] = set()
-
-    def handle(self, event: Any) -> None:
-        etype = getattr(event, "type", "")
-        if etype == "agent.session.turn.output_text.delta":
-            key = (getattr(event, "item_id", None), getattr(event, "content_index", None))
-            delta = getattr(event, "delta", "") or ""
-            self.parts[key] = self.parts.get(key, "") + delta
-            self.streamed.add(key)
-            sys.stdout.write(delta)
-            sys.stdout.flush()
-        elif etype == "agent.session.turn.output_text.done":
-            key = (getattr(event, "item_id", None), getattr(event, "content_index", None))
-            text = getattr(event, "text", "") or ""
-            if key not in self.streamed:
-                sys.stdout.write(text)
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            self.parts[key] = text
-        elif etype.startswith("agent.session.environment."):
-            label = etype.rsplit(".", 1)[-1]
-            if label not in self.status_shown:
-                self.status_shown.add(label)
-                print(f"[sandbox: {label}]", flush=True)
-
-    @property
-    def text(self) -> str:
-        return "".join(self.parts.values())
-
-
-def check_terminal(event: Any) -> bool:
-    """Return True when the root agent's turn has completed. Raise on failure."""
-    etype = getattr(event, "type", "")
-    if etype == "error":
-        err = getattr(event, "error", None)
-        raise RuntimeError(getattr(err, "message", "unknown stream error"))
-    if etype in ("agent.session.failed", "agent.session.environment.failed"):
-        raise RuntimeError(f"Agent lifecycle failure: {etype}")
-    if etype in (
-        "agent.session.turn.completed",
-        "agent.session.turn.failed",
-        "agent.session.turn.cancelled",
-    ):
-        turn = getattr(event, "turn", None)
-        if getattr(turn, "subagent_id", None) is not None:
-            return False  # a subagent finished; the root turn continues
-        if etype == "agent.session.turn.completed":
-            return True
-        if etype == "agent.session.turn.failed":
-            err = getattr(turn, "error", None)
-            raise RuntimeError(f"The turn failed: {getattr(err, 'message', '') or 'no detail given'}")
-        raise RuntimeError("The turn was cancelled")
-    return False
-
-
-# Optional settings the API may not accept on every account. If the API answers
-# "Unknown parameter" for one of these, it is removed and the request is sent
-# again. Anything not in this list is required and is never removed.
-OPTIONAL_PARAMETERS = (
-    "spend_control",
-    "metadata",
-    "agent.reasoning",
-    "agent.multi_agent",
-    "environment.container_size",
-    "environment.capability_directories",
-)
-
-_UNKNOWN_PARAM = re.compile(r"Unknown parameter:\s*'([^']+)'")
-
-
-def _drop_parameter(request: Dict[str, Any], dotted: str) -> bool:
-    """Remove a dotted parameter path from the request. Return True if removed."""
-    parts = dotted.split(".")
-    node: Any = request
-    for key in parts[:-1]:
-        if not isinstance(node, dict) or key not in node:
-            return False
-        node = node[key]
-    if isinstance(node, dict) and parts[-1] in node:
-        del node[parts[-1]]
-        return True
-    return False
-
-
-def _optional_match(name: str) -> Optional[str]:
-    """Map the parameter named in an API error to an optional parameter path."""
-    for path in OPTIONAL_PARAMETERS:
-        if name == path or name.startswith(path + ".") or name.startswith(path + "["):
-            return path
-    return None
-
-
-def open_session_stream(client: Any, request: Dict[str, Any]) -> Any:
-    """Create the session, removing optional parameters the API rejects."""
-    import openai
-
-    while True:
-        try:
-            return client.beta.agents.sessions.create(**request)
-        except openai.BadRequestError as exc:
-            found = _UNKNOWN_PARAM.search(str(exc))
-            path = _optional_match(found.group(1)) if found else None
-            if path is None or not _drop_parameter(request, path):
-                raise
-            if path == "spend_control":
-                print(
-                    "[note] Your OpenAI account does not accept a per-session spending "
-                    "limit, so none is applied. Set a monthly limit on your account at "
-                    "platform.openai.com/settings/organization/limits"
-                )
+    marker = REPO_DIR / ".downloaded"
+    if REPO_DIR.exists() and marker.exists() and not force:
+        return REPO_DIR
+    print("Downloading the repository from GitHub ...", flush=True)
+    r = requests.get(ZIP_URL, timeout=120)
+    r.raise_for_status()
+    tmp = HERE / "repo_tmp"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    tmp.mkdir()
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        for info in z.infolist():
+            # zip-slip guard: never write outside the target folder
+            target = (tmp / info.filename).resolve()
+            if not str(target).startswith(str(tmp.resolve())):
+                continue
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
             else:
-                print(f"[note] The API does not accept '{path}'; continuing without it.")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(info))
+    inner = next(p for p in tmp.iterdir() if p.is_dir())
+    if REPO_DIR.exists():
+        shutil.rmtree(REPO_DIR)
+    inner.rename(REPO_DIR)
+    shutil.rmtree(tmp, ignore_errors=True)
+    marker.write_text(dt.datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
+    return REPO_DIR
 
 
-def first_turn(client: Any, question: str, knowledge_entries: List[Dict[str, str]]) -> str:
-    """Create the session, stream the first turn, return the session id."""
-    printer = TurnPrinter()
-    request: Dict[str, Any] = {
-        "agent": build_agent(),
-        "environment": build_environment(knowledge_entries),
-        "input": question,
-        "spend_control": {"limit": SPEND_LIMIT_CENTS},
-        "metadata": {"project": "politomorphism", "agent": "defense-audit-agent"},
-        "stream": True,
-    }
-    stream = open_session_stream(client, request)
-    with stream.with_result_collection() as events:
-        for event in events:
-            printer.handle(event)
-            check_terminal(event)
-        result = events.get_final_result()
-    return result.session_id
+def safe_path(path: str) -> Path:
+    p = (REPO_DIR / path.strip().lstrip("/\\")).resolve()
+    if not str(p).startswith(str(REPO_DIR.resolve())):
+        raise ValueError("path outside the repository")
+    return p
 
 
-def next_turn(client: Any, session_id: str, question: str) -> None:
-    """Send a follow-up message to an existing session and stream the reply."""
-    printer = TurnPrinter()
-    # Open the stream before sending, so early events are not missed.
-    with client.beta.agents.sessions.events.stream(session_id) as events:
-        client.beta.agents.sessions.events.create(
-            session_id,
-            idempotency_key=str(uuid.uuid4()),
-            events=[
-                {
-                    "type": "agent.session.input.message",
-                    "input": [
-                        {
-                            "role": "user",
-                            "content": [{"type": "input_text", "text": question}],
-                        }
-                    ],
-                }
-            ],
-        )
-        for event in events:
-            printer.handle(event)
-            if check_terminal(event):
-                return
-    raise RuntimeError("The stream closed before the turn ended.")
+def clip(text: str) -> str:
+    if len(text) <= MAX_RETURN_CHARS:
+        return text
+    return text[:MAX_RETURN_CHARS] + f"\n[... cut: {len(text) - MAX_RETURN_CHARS} more characters; read a narrower range]"
 
 
 # --------------------------------------------------------------------------
-# Artifacts (files the agent wrote to /workspace/outputs)
+# Tools (the model can call only these)
 # --------------------------------------------------------------------------
 
+def list_files(subfolder: str = "") -> str:
+    """List all files in the repository, or in one subfolder, with their sizes in bytes.
 
-def download_new_artifacts(client: Any, session_id: str, seen: Set[str]) -> List[Path]:
-    saved: List[Path] = []
+    Args:
+        subfolder: Path of a subfolder relative to the repository root, for example "benchmark". Empty for the whole repository.
+    """
+    base = safe_path(subfolder) if subfolder else REPO_DIR
+    if not base.exists():
+        return f"No such folder: {subfolder}"
+    rows = []
+    for p in sorted(base.rglob("*")):
+        if p.is_file() and ".downloaded" not in p.name:
+            rows.append(f"{p.relative_to(REPO_DIR).as_posix()}\t{p.stat().st_size}")
+    return clip("\n".join(rows) or "(empty)")
+
+
+def read_file(path: str, start_line: int = 1, max_lines: int = 300) -> str:
+    """Read a text file of the repository (code, markdown, csv, json, sha256), with line numbers.
+
+    Args:
+        path: File path relative to the repository root.
+        start_line: First line to return, counted from 1.
+        max_lines: Maximum number of lines to return.
+    """
+    p = safe_path(path)
+    if not p.is_file():
+        return f"No such file: {path}"
+    if p.suffix.lower() in (".docx", ".pdf"):
+        return "This is a document; use read_document."
+    lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    start = max(1, int(start_line))
+    chunk = lines[start - 1:start - 1 + int(max_lines)]
+    out = "\n".join(f"{i}\t{l}" for i, l in enumerate(chunk, start))
+    return clip(f"{path}: lines {start}-{start + len(chunk) - 1} of {len(lines)}\n{out}")
+
+
+def _document_paragraphs(p: Path) -> List[str]:
+    if p.suffix.lower() == ".docx":
+        from docx import Document
+
+        d = Document(str(p))
+        paras = [x.text for x in d.paragraphs if x.text.strip()]
+        for ti, t in enumerate(d.tables, 1):
+            for r in t.rows:
+                paras.append(f"[table {ti}] " + " | ".join(c.text.strip() for c in r.cells))
+        return paras
+    if p.suffix.lower() == ".pdf":
+        from pypdf import PdfReader
+
+        out = []
+        for i, page in enumerate(PdfReader(str(p)).pages, 1):
+            for line in (page.extract_text() or "").splitlines():
+                if line.strip():
+                    out.append(f"[p.{i}] {line}")
+        return out
+    raise ValueError("not a .docx or .pdf file")
+
+
+def read_document(path: str, start_paragraph: int = 1, max_paragraphs: int = 200) -> str:
+    """Read a Word (.docx) or PDF document of the repository, with paragraph numbers. Tables are included.
+
+    Args:
+        path: Document path relative to the repository root.
+        start_paragraph: First paragraph to return, counted from 1.
+        max_paragraphs: Maximum number of paragraphs to return.
+    """
+    p = safe_path(path)
+    if not p.is_file():
+        return f"No such file: {path}"
     try:
-        page = client.beta.agents.sessions.artifacts.list(session_id, order="asc", limit=100)
-        artifacts = list(page)
-    except Exception as exc:  # listing must never break the conversation
-        print(f"[could not list output files: {exc}]")
-        return saved
+        paras = _document_paragraphs(p)
+    except ValueError as exc:
+        return str(exc)
+    start = max(1, int(start_paragraph))
+    chunk = paras[start - 1:start - 1 + int(max_paragraphs)]
+    out = "\n".join(f"P{i:04d}\t{t}" for i, t in enumerate(chunk, start))
+    return clip(f"{path}: paragraphs {start}-{start + len(chunk) - 1} of {len(paras)}\n{out}")
 
-    for art in artifacts:
-        if art.id in seen:
+
+def search(pattern: str, file_pattern: str = "*") -> str:
+    """Search the whole repository, including .docx and .pdf documents, for a regular expression (case-insensitive).
+
+    Args:
+        pattern: Regular expression to look for.
+        file_pattern: Optional file-name filter such as "*.docx" or "benchmark/*.py".
+    """
+    try:
+        rx = re.compile(pattern, re.I)
+    except re.error as exc:
+        return f"Invalid pattern: {exc}"
+    hits = []
+    for p in sorted(REPO_DIR.rglob("*")):
+        if not p.is_file():
             continue
-        seen.add(art.id)
-        rel = art.path
-        if rel.startswith(SANDBOX_OUTPUTS):
-            rel = rel[len(SANDBOX_OUTPUTS):]
-        rel = rel.lstrip("/") or art.id
-        target = (OUTPUTS_DIR / rel).resolve()
-        if OUTPUTS_DIR.resolve() not in target.parents:
-            target = OUTPUTS_DIR / Path(rel).name  # never write outside outputs/
+        rel = p.relative_to(REPO_DIR).as_posix()
+        if not (fnmatch.fnmatch(rel, file_pattern) or fnmatch.fnmatch(p.name, file_pattern)):
+            continue
         try:
-            content = client.beta.agents.sessions.artifacts.content(art.id, session_id=session_id)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content.content)
-            saved.append(target)
-        except Exception as exc:
-            print(f"[could not download {art.path}: {exc}]")
-    return saved
+            if p.suffix.lower() in (".docx", ".pdf"):
+                items = [(f"P{i:04d}", t) for i, t in enumerate(_document_paragraphs(p), 1)]
+            elif p.suffix.lower() in TEXT_SUFFIXES or p.name in ("README", "LICENSE"):
+                items = [(f"L{i}", t) for i, t in enumerate(
+                    p.read_text(encoding="utf-8", errors="replace").splitlines(), 1)]
+            else:
+                continue
+        except Exception:
+            continue
+        for loc, t in items:
+            if rx.search(t):
+                hits.append(f"{rel}:{loc}\t{t.strip()[:300]}")
+                if len(hits) >= 200:
+                    return clip("\n".join(hits) + "\n[stopped at 200 matches]")
+    return clip("\n".join(hits) or "No matches.")
 
 
-def known_artifact_ids(client: Any, session_id: str) -> Set[str]:
+def file_sha256(path: str) -> str:
+    """Compute the SHA-256 hash of a repository file.
+
+    Args:
+        path: File path relative to the repository root.
+    """
+    p = safe_path(path)
+    if not p.is_file():
+        return f"No such file: {path}"
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def check_hashes(record_path: str) -> str:
+    """Verify every line of a SHA-256 freeze record (format: '<hash>  <path>') against the files in the repository.
+
+    Args:
+        record_path: Path of the .sha256 record relative to the repository root, for example "benchmark/cocolofa_freeze.sha256".
+    """
+    rec = safe_path(record_path)
+    if not rec.is_file():
+        return f"No such file: {record_path}"
+    out = []
+    for line in rec.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"\s*([0-9a-fA-F]{64})\s+\*?(.+?)\s*$", line)
+        if not m:
+            continue
+        want, rel = m.group(1).lower(), m.group(2)
+        candidates = [REPO_DIR / rel, rec.parent / rel]
+        f = next((c for c in candidates if c.is_file()), None)
+        if f is None:
+            out.append(f"MISSING  {rel}")
+            continue
+        got = hashlib.sha256(f.read_bytes()).hexdigest()
+        out.append(("OK       " if got == want else f"CHANGED  (now {got})  ") + rel)
+    return "\n".join(out) or "No hash lines found."
+
+
+def _github(url: str) -> Any:
+    import requests
+
+    r = requests.get(url, headers={"Accept": "application/vnd.github+json"}, timeout=60)
+    if r.status_code == 403 and "rate limit" in r.text.lower():
+        raise RuntimeError("GitHub rate limit reached (60 requests per hour without login); try later")
+    r.raise_for_status()
+    return r.json()
+
+
+def git_history(path: str = "", max_commits: int = 50) -> str:
+    """List commits of the repository from GitHub, newest first: hash, date (UTC), author, message. Optionally only commits touching one file.
+
+    Args:
+        path: Optional file path to restrict the history to that file.
+        max_commits: Maximum number of commits to return (up to 100).
+    """
+    n = max(1, min(100, int(max_commits)))
+    url = f"{API}/commits?sha={BRANCH}&per_page={n}" + (f"&path={path}" if path else "")
     try:
-        return {a.id for a in client.beta.agents.sessions.artifacts.list(session_id, limit=100)}
-    except Exception:
-        return set()
+        data = _github(url)
+    except Exception as exc:
+        return f"Could not read the history: {exc}"
+    rows = []
+    for c in data:
+        cm = c.get("commit", {})
+        rows.append(f"{c['sha'][:7]}\t{cm.get('author', {}).get('date', '')}\t"
+                    f"{cm.get('author', {}).get('name', '')}\t{cm.get('message', '').splitlines()[0][:150]}")
+    return "\n".join(rows) or "No commits."
+
+
+def commit_files(commit: str) -> str:
+    """List the files a commit added, modified or removed, with line counts.
+
+    Args:
+        commit: Commit hash, full or the first 7 characters.
+    """
+    try:
+        data = _github(f"{API}/commits/{commit}")
+    except Exception as exc:
+        return f"Could not read the commit: {exc}"
+    cm = data.get("commit", {})
+    head = f"{data['sha'][:7]}  {cm.get('author', {}).get('date', '')}  {cm.get('message', '').splitlines()[0]}"
+    rows = [f"{f['status']}\t+{f.get('additions', 0)} -{f.get('deletions', 0)}\t{f['filename']}"
+            for f in data.get("files", [])]
+    return head + "\n" + "\n".join(rows)
+
+
+def rescore_predictions(path: str = "benchmark/cocolofa_fd_predictions.csv",
+                        n_boot: int = 2000, seed: int = 0) -> str:
+    """Re-score a saved four-cell prediction file without calling any model.
+
+    The file needs the columns cell (A, B, C, D), gold_false_dilemma, flag_fd and
+    abstain, and optionally worker_id. A prediction is correct when the flag equals
+    the label and the item was not abstained. Returns per-cell counts, balanced
+    accuracy on the hard cells (B, C) and the easy cells (A, D), the detection
+    rates with and without the marker, an item-level bootstrap interval and, if
+    worker_id is present, a writer-clustered bootstrap interval.
+
+    Args:
+        path: Prediction file path relative to the repository root.
+        n_boot: Number of bootstrap replicates.
+        seed: Random seed for the bootstrap.
+    """
+    import numpy as np
+    import pandas as pd
+
+    p = safe_path(path)
+    if not p.is_file():
+        return f"No such file: {path}"
+    df = pd.read_csv(p)
+    need = {"cell", "gold_false_dilemma", "flag_fd", "abstain"}
+    if not need.issubset(df.columns):
+        return f"Missing columns: {sorted(need - set(df.columns))}"
+    df["correct"] = ((df.flag_fd == df.gold_false_dilemma) & (df.abstain == 0)).astype(int)
+    out = [f"File: {path}; rows {len(df)}; SHA-256 {hashlib.sha256(p.read_bytes()).hexdigest()}"]
+    for c in "ABCD":
+        d = df[df.cell == c]
+        if len(d):
+            out.append(f"Cell {c}: correct {d.correct.sum()}/{len(d)} = {d.correct.mean():.3f}; "
+                       f"abstained {int(d.abstain.sum())}; flagged {int(d.flag_fd.sum())}")
+    acc = {c: df[df.cell == c].correct.mean() for c in "ABCD" if (df.cell == c).any()}
+    if {"B", "C"} <= acc.keys():
+        out.append(f"Hard-cell balanced accuracy (B, C): {(acc['B'] + acc['C']) / 2:.4f}")
+    if {"A", "D"} <= acc.keys():
+        out.append(f"Easy-cell balanced accuracy (A, D): {(acc['A'] + acc['D']) / 2:.4f}")
+    if {"A", "B"} <= set(df.cell):
+        fa = df[df.cell == "A"].flag_fd.mean()
+        fb = df[df.cell == "B"].flag_fd.mean()
+        out.append(f"False-dilemma flag rate with marker (A) {fa:.3f}, without marker (B) {fb:.3f}")
+    rng = np.random.default_rng(int(seed))
+    hard = df[df.cell.isin(["B", "C"])].reset_index(drop=True)
+    if len(hard) and {"B", "C"} <= set(hard.cell):
+        isB = (hard.cell == "B").values
+        cor = hard.correct.values
+        bas = []
+        for _ in range(int(n_boot)):
+            idx = rng.integers(0, len(hard), len(hard))
+            b, cc = isB[idx], cor[idx]
+            if b.any() and (~b).any():
+                bas.append((cc[b].mean() + cc[~b].mean()) / 2)
+        lo, hi = np.percentile(bas, [2.5, 97.5])
+        out.append(f"Item-level bootstrap 95% interval (pooled resampling of hard items, {len(bas)} "
+                   f"replicates, seed {seed}): {lo:.3f}-{hi:.3f}. This tool's scheme may differ from the "
+                   "repository script's, so small differences from published intervals are expected.")
+        if "worker_id" in df.columns:
+            writers = df.worker_id.unique()
+            byw = {w: df[df.worker_id == w] for w in writers}
+            bas = []
+            for _ in range(int(n_boot)):
+                pick = rng.choice(writers, len(writers), replace=True)
+                kb = nb = kc = nc = 0
+                for w in pick:
+                    d = byw[w]
+                    db, dc = d[d.cell == "B"], d[d.cell == "C"]
+                    kb += db.correct.sum(); nb += len(db)
+                    kc += dc.correct.sum(); nc += len(dc)
+                if nb and nc:
+                    bas.append((kb / nb + kc / nc) / 2)
+            lo, hi = np.percentile(bas, [2.5, 97.5])
+            out.append(f"Writer-clustered bootstrap 95% interval ({len(writers)} writers resampled with "
+                       f"replacement, all comments of a drawn writer, {len(bas)} replicates kept, seed {seed}): "
+                       f"{lo:.3f}-{hi:.3f}")
+    return "\n".join(out)
+
+
+def write_report(title: str, body: str) -> str:
+    """Save a report as a Word file in the outputs folder and return its path.
+
+    Args:
+        title: Report title.
+        body: Report text. Separate paragraphs with a blank line. A line starting with '# ' is a heading; a line starting with '- ' is a bullet.
+    """
+    from docx import Document
+
+    OUTPUTS.mkdir(exist_ok=True)
+    doc = Document()
+    doc.add_heading(title, 0)
+    meta = doc.add_paragraph(f"Defense Audit Agent · {dt.datetime.now():%d.%m.%Y %H:%M} · model {MODEL} · "
+                             "read-only audit of github.com/politomorphism/politomorphism-defense")
+    meta.runs[0].italic = True
+    for block in re.split(r"\n\s*\n", body.strip()):
+        lines = block.strip().splitlines()
+        if not lines:
+            continue
+        if all(l.strip().startswith("- ") for l in lines):
+            for l in lines:
+                doc.add_paragraph(l.strip()[2:], style="List Bullet")
+        elif lines[0].startswith("# "):
+            doc.add_heading(lines[0][2:].strip(), 1)
+            if len(lines) > 1:
+                doc.add_paragraph(" ".join(l.strip() for l in lines[1:]))
+        else:
+            doc.add_paragraph(" ".join(l.strip() for l in lines))
+    safe = re.sub(r"[^A-Za-z0-9ĂÂÎȘȚăâîșț_ -]", "", title).strip().replace(" ", "_")[:60] or "report"
+    out = OUTPUTS / f"{safe}_{dt.datetime.now():%Y-%m-%d_%H%M}.docx"
+    doc.save(str(out))
+    return f"Saved: {out}"
+
+
+TOOLS = [list_files, read_file, read_document, search, file_sha256, check_hashes,
+         git_history, commit_files, rescore_predictions, write_report]
 
 
 # --------------------------------------------------------------------------
-# Command line
+# Conversation with Gemini
 # --------------------------------------------------------------------------
 
+def make_chat(client: Any) -> Any:
+    from google.genai import types
 
-def print_dry_run(question: str) -> None:
-    entries, uploaded, skipped = collect_knowledge()
-    env = build_environment(entries)
-    agent = build_agent()
-    print("DRY RUN - nothing is sent to OpenAI\n")
-    print(f"model              : {agent['model']}")
-    print(f"reasoning effort   : {agent['reasoning']['effort']}")
-    print(f"tools              : {[t['type'] for t in agent['tools']]}")
-    print(f"subagents          : up to {agent['multi_agent']['max_concurrent_subagents']} in parallel")
-    print(f"spend limit        : {SPEND_LIMIT_CENTS} cents per session")
-    print(f"container          : {env['container_size']}, network {env['network']['access']}")
-    print(f"python packages    : {', '.join(env['packages']['python'])}")
-    print(f"repositories       : {', '.join(REPOS) if REPOS else 'none'}")
-    print(f"instructions       : {len(INSTRUCTIONS)} characters")
-    print(f"skills             : {', '.join(SKILLS)}")
-    print(f"knowledge uploaded : {len(uploaded)} file(s)")
-    for name in uploaded:
-        print(f"    + {name}")
-    for note in skipped:
-        print(f"    - skipped {note}")
-    print(f"first question     : {question!r}")
+    config = types.GenerateContentConfig(
+        system_instruction=INSTRUCTIONS,
+        tools=TOOLS,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+            maximum_remote_calls=MAX_TOOL_CALLS),
+    )
+    return client.chats.create(model=MODEL, config=config)
+
+
+def ask(chat: Any, question: str) -> str:
+    """Send one question; retry once after a pause if the free-tier limit is hit."""
+    for attempt in range(3):
+        try:
+            resp = chat.send_message(question)
+            text = resp.text or ""
+            if not text.strip():
+                text = ("[The model returned no text. It may have used up its tool calls; "
+                        "ask it to write its findings now.]")
+            return text
+        except Exception as exc:
+            msg = str(exc)
+            if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and "per day" in msg.lower():
+                raise RuntimeError("The free daily Gemini limit is used up for today; try again tomorrow.") from exc
+            if ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and attempt < 2:
+                wait = 65
+                print(f"[free-tier limit reached; waiting {wait} seconds and trying again]", flush=True)
+                time.sleep(wait)
+                continue
+            raise
+    return ""
+
+
+def save_transcript(log: List[Dict[str, str]]) -> Optional[Path]:
+    if not log:
+        return None
+    OUTPUTS.mkdir(exist_ok=True)
+    from docx import Document
+
+    doc = Document()
+    doc.add_heading("Defense Audit Agent — conversation", 0)
+    doc.add_paragraph(f"{dt.datetime.now():%d.%m.%Y %H:%M} · model {MODEL}").runs[0].italic = True
+    for turn in log:
+        doc.add_heading("Question", 2)
+        doc.add_paragraph(turn["q"])
+        doc.add_heading("Answer", 2)
+        for para in re.split(r"\n\s*\n", turn["a"].strip()):
+            doc.add_paragraph(para.strip())
+    out = OUTPUTS / f"conversation_{dt.datetime.now():%Y-%m-%d_%H%M}.docx"
+    doc.save(str(out))
+    return out
 
 
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8")  # Windows consoles
+            stream.reconfigure(encoding="utf-8")
         except Exception:
             pass
 
-    parser = argparse.ArgumentParser(description="Defense Audit Agent for Politomorphism")
-    parser.add_argument("--new", action="store_true", help="start a fresh session")
-    parser.add_argument("--dry-run", action="store_true", help="show the request, call nothing")
-    parser.add_argument("--ask", metavar="TEXT", help="ask one question and exit")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description="Defense Audit Agent (Gemini, local)")
+    ap.add_argument("--ask", metavar="TEXT", help="ask one question and exit")
+    ap.add_argument("--refresh", action="store_true", help="download the latest repository first")
+    ap.add_argument("--dry-run", action="store_true", help="check setup and tools, call no model")
+    args = ap.parse_args()
 
-    KNOWLEDGE_DIR.mkdir(exist_ok=True)
-    OUTPUTS_DIR.mkdir(exist_ok=True)
-
-    default_question = (
-        "Read STATUS.md, README.md and the git log of the politomorphism-defense "
-        "repository and tell me, in plain words, what is done, what is verified "
-        "by you, and what the single next step is."
-    )
-
-    if args.dry_run:
-        print_dry_run(args.ask or default_question)
-        return 0
-
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY is not set. Set it, then run this file again.")
+    try:
+        import requests  # noqa: F401
+        import numpy  # noqa: F401
+        import pandas  # noqa: F401
+        import pypdf  # noqa: F401
+        import docx  # noqa: F401
+    except ImportError as exc:
+        print(f"Missing library ({exc.name}). Run:\n"
+              "    python -m pip install --upgrade google-genai requests numpy pandas pypdf python-docx")
         return 1
 
     try:
-        from openai import OpenAI
+        download_repo(force=args.refresh)
+    except Exception as exc:
+        print(f"Could not download the repository: {exc}")
+        return 1
+    when = (REPO_DIR / ".downloaded").read_text(encoding="utf-8")
+    print(f"Repository copy from {when} in {REPO_DIR}  (python cpa_agent.py --refresh updates it)")
+
+    if args.dry_run:
+        print("\nDRY RUN - no model is called\n")
+        print(f"model           : {MODEL}")
+        print(f"tool calls/ask  : {MAX_TOOL_CALLS}")
+        print(f"files in repo   : {len(list_files().splitlines())}")
+        print("hash check      :")
+        print("  " + check_hashes("benchmark/cocolofa_freeze.sha256").replace("\n", "\n  "))
+        print("rescore         :")
+        print("  " + rescore_predictions(n_boot=300).replace("\n", "\n  "))
+        print(f"gemini key set  : {'yes' if os.environ.get('GEMINI_API_KEY') else 'NO'}")
+        return 0
+
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("GEMINI_API_KEY is not set. Create a free key in Google AI Studio and set it.")
+        return 1
+    try:
+        from google import genai
     except ImportError:
-        print("The openai package is missing. Run:  pip install --upgrade openai")
+        print("The google-genai package is missing. Run:  python -m pip install --upgrade google-genai")
         return 1
 
-    client = OpenAI()
-    if not hasattr(client.beta, "agents"):
-        print("This openai package is too old for the Agents API. Run:  pip install --upgrade openai")
-        return 1
+    client = genai.Client()
+    chat = make_chat(client)
+    log: List[Dict[str, str]] = []
 
-    if args.new and SESSION_FILE.exists():
-        SESSION_FILE.unlink()
-
-    session_id: Optional[str] = None
-    if SESSION_FILE.exists():
-        session_id = SESSION_FILE.read_text(encoding="utf-8").strip() or None
-
-    seen: Set[str] = known_artifact_ids(client, session_id) if session_id else set()
-
-    print("Defense Audit Agent - Politomorphism")
-    if session_id:
-        print(f"Continuing session {session_id}  (python cpa_agent.py --new starts fresh)")
-    else:
-        _, uploaded, skipped = collect_knowledge()
-        print(f"New session. Uploading {len(uploaded)} file(s) from the knowledge folder.")
-        for note in skipped:
-            print(f"  skipped {note}")
-        print(f"  Repository to clone: {', '.join(REPOS) if REPOS else 'none'}")
-    print("Type your question and press Enter. Type exit to stop.\n")
-
-    def run_turn(question: str) -> None:
-        nonlocal session_id
-        if session_id is None:
-            entries, _, _ = collect_knowledge()
-            session_id = first_turn(client, question, entries)
-            SESSION_FILE.write_text(session_id, encoding="utf-8")
-        else:
-            next_turn(client, session_id, question)
-        for path in download_new_artifacts(client, session_id, seen):
-            print(f"[saved: {path}]")
-
-    def safe_turn(question: str) -> bool:
+    def turn(q: str) -> bool:
         try:
-            run_turn(question)
-            return True
+            a = ask(chat, q)
         except KeyboardInterrupt:
             print("\n[interrupted]")
             return False
         except Exception as exc:
             print(f"\n[error] {exc}")
-            if session_id is not None:
-                print(
-                    "If the sandbox expired (about an hour without activity), "
-                    "start again with:  python cpa_agent.py --new"
-                )
             return False
+        print(a, flush=True)
+        log.append({"q": q, "a": a})
+        return True
 
     if args.ask:
-        return 0 if safe_turn(args.ask) else 1
+        ok = turn(args.ask)
+        p = save_transcript(log)
+        if p:
+            print(f"\n[conversation saved: {p}]")
+        return 0 if ok else 1
 
+    print("Defense Audit Agent (Gemini) - type your question and press Enter. Type exit to stop.\n")
     while True:
         try:
-            question = input("\nyou > ").strip()
+            q = input("\nyou > ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
-        if not question:
+        if not q:
             continue
-        if question.lower() in ("exit", "quit", "/exit"):
+        if q.lower() in ("exit", "quit", "/exit"):
             break
         print()
-        safe_turn(question)
-
+        turn(q)
+    p = save_transcript(log)
+    if p:
+        print(f"[conversation saved: {p}]")
     return 0
 
 
