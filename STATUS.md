@@ -1,6 +1,6 @@
 # Research status — where the project stands
 
-**Snapshot date:** 2026-11-15 · **Author:** Șerban, G. F. · ORCID [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
+**Snapshot date:** 2026-11-16 · **Author:** Șerban, G. F. · ORCID [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
 
 This file is a plain progress map: what exists as working code, what is reported
 on author-built data, what is only proposed, and what is still pending. It is an
@@ -14,7 +14,7 @@ this code.
 | Part | Status |
 |---|---|
 | Leakage-controlled baseline vs transformer (article-disjoint, multi-seed) | **Done**, reported with bootstrap CIs (see README) |
-| Contrastive-pairs benchmark (construct validity: structure vs vocabulary) | **Done** on author-built pairs (v3 dev, v4 held-out) |
+| Contrastive-pairs benchmark (pair discrimination under approximate vocabulary matching) | **Done** on author-built pairs (v3 dev, v4 held-out). Does **not** isolate structure from vocabulary: residual lexical cues are not excluded (corrected 2026-11-16, see erratum) |
 | Detector v2: technique classifier + abstention | **Done**, reported on author-built data |
 | Negation verifier (attributable, equivalence-only) | **Done**, reported on author-built data |
 | Study 2 (controlled structure/negation diagnostic) | **Built & frozen**; not yet run by the author |
@@ -24,7 +24,7 @@ this code.
 | Target-domain calibration (real r_k, f_k) | **Pending** — not demonstrated |
 | Integrated dynamic engine (forecasting equation) | **Proposed** in pre-registration; no validated predictive performance |
 | **Pre-registered structural-sensitivity test — false_dilemma on CoCoLoFa** (Yeh et al. 2024; pre-registered 2026-11-11, commit 1bf76c6; one run 2026-11-12) | **Done — verdict INCONCLUSIVE.** Hard-cell balanced accuracy **0.664** [95% CI 0.599–0.719] (rule: supported ≥ 0.75 with lower bound > 0.60; not supported ≤ 0.60 or lower bound ≤ 0.50). Per cell: FD with marker 0.936, FD **without** marker 0.545, non-FD with marker 0.782, non-FD without marker 0.818. Descriptive reading: the marker rarely triggers false alarms, but detection drops sharply when the marker is absent (same pattern as LOGIC, 98% vs 62%). Writer-clustered CI 0.464–0.755; supervised lexical control 0.877. Files: `benchmark/cocolofa_fd_predictions.csv` (no text), `benchmark/cocolofa_fd_report.txt` Written up 2026-11-12 as the working paper *Marker Dependence in Zero-Shot False-Dilemma Detection: A Pre-registered Test on Independent Data*: `Marker_Dependence_FalseDilemma_CoCoLoFa_EN.*`, Romanian version `Dependenta_de_Marker_Falsa_Dilema_CoCoLoFa_RO.*` |
-| Romanian-language arm | **Frozen** (2026-11-11) until the correction round below is issued |
+| Romanian-language arm | **Frozen** (2026-11-11); stays frozen until the author decides the next direction |
 | **DFA component** (`dfa/`, added 2026-11-11) — consumer-protection practices named by the EU Digital Fairness Act proposal | **Frozen** (2026-11-11). Built; lexical rules baseline on author-built dev and held-out sets (dev 24/24 in-sample, held-out 0/13 — does not generalise); gpt-4o-mini stage 1: dev detection 23/24 but false alarms 18/26, held-out 10/13 and 7/15; article refs follow the leaked draft, not yet checked against the official COM text |
 
 ## Implementation map (component → script → input → output → test)
@@ -71,15 +71,20 @@ What is **not** yet shown: target-domain calibration (so the prevalence correcti
 stays illustrative / author-label-conditioned), independent human validation of
 labels, and any validated predictive performance of the integrated engine.
 
+## Correction round (issued 2026-11-16)
+
+The single correction round after the CoCoLoFa test is issued. Working Paper III
+(English and Romanian) and the overview article are reissued as Version 2 with a
+correction note; the claim that the programme has shown a model responding to
+structure rather than vocabulary is withdrawn wherever it appears. Everything else
+is covered by `Erratum_CoCoLoFa_Correction_Round_EN_RO.*`, with the full
+sentence-by-sentence list in `Corecturi_lucrari_dupa_CoCoLoFa.docx`. No score,
+sample, prompt, marker or decision rule changed.
+
 ## Next step
 
-One line only (decided 2026-11-11, updated 2026-11-15). The pre-registered CoCoLoFa
-test is written up as a working paper (English and Romanian), reporting the
-INCONCLUSIVE verdict as pre-registered and the marker asymmetry as a descriptive
-finding. The single next step is to issue the corrections to earlier published
-papers once, wherever they state that the detector tracks structure rather than
-vocabulary. No re-run or prompt change on the CoCoLoFa sample: that would be tuning
-on the test. Everything else (H1–H3, DFA, Romanian arm, engine components, book)
-stays frozen until the corrections are issued. Independent human labels for the
-marker-free cell, or a multi-model run of this protocol, would each be a new study
-with its own pre-registration.
+Not yet decided by the author (as of 2026-11-16). Until it is, H1–H3, DFA, the
+Romanian arm, the engine components and the book stay frozen, and the CoCoLoFa
+sample is not re-run or re-prompted. The two follow-up studies already named would
+each need their own pre-registration: independent human labels for the marker-free
+cell, and a multi-model run of the CoCoLoFa protocol.

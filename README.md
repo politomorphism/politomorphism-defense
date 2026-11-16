@@ -21,6 +21,10 @@ Independent reproduction audits found two problems in the first versions, now co
 
 The corrected paper is `Politomorphism_Defensive_Detection_WorkingPaper_v2_corrected.*`, which **supersedes** Version 1 (kept for history). Version 2 also adds bootstrap confidence intervals, a matched-precision analysis, a comparison across lexical baselines, and explicit construct-validity and ethical-scoping caveats.
 
+## Correction round after the CoCoLoFa test (16 November 2026)
+
+The pre-registered CoCoLoFa test of the false-dilemma detector (working paper of 12 November 2026) was **INCONCLUSIVE**: detection 94% with an explicit either/or marker, 55% without. The claim that the programme has shown a model responding to rhetorical structure rather than to vocabulary is therefore **withdrawn** in its strong form. Working Paper III (English and Romanian) and the overview article are reissued as Version 2 with a correction note; the originals are kept for history. All other corrections, including three reporting clarifications to Working Paper II v2 and one to the abstract of Working Paper I v2, are in [`Erratum_CoCoLoFa_Correction_Round_EN_RO.pdf`](Erratum_CoCoLoFa_Correction_Round_EN_RO.pdf); the sentence-by-sentence list is `Corecturi_lucrari_dupa_CoCoLoFa.docx`. No reported score changed.
+
 ## Results (article-disjoint, corrected)
 
 Held-out test set (862 paragraphs; 264 propagandistic). Propagandistic class, 95% article-clustered bootstrap intervals (2,000 resamples):
@@ -38,7 +42,7 @@ A classification score is **not** a validated measure of "manipulation density,"
 
 ### Transformer vs baseline (Working Paper II, v2)
 
-On the same article-disjoint split, a fine-tuned DistilBERT was compared with the baseline, with per-paragraph scores saved. At default thresholds the transformer is more precise (0.578 vs 0.464) and flags fewer paragraphs (249 vs 345), with lower recall (0.545 vs 0.606); the **F1 difference at default thresholds is not significant** (ΔF1 +0.033, 95% CI [−0.03, +0.09]). But on threshold-independent / equal-cost comparisons the transformer is the better detector: average precision higher (ΔAP +0.074 [+0.00, +0.14]); recall at matched review budget higher (0.670 vs 0.606, Δ +0.068 [+0.01, +0.12]); and significantly more correct classifications (McNemar 148 vs 84, p < 0.001). This **reverses** Working Paper I/II v1's "context buys precision, not recall": at equal cost, context buys recall too. Paired transitions show the two models miss *different* cases, not the same ones.
+On the same article-disjoint split, a fine-tuned DistilBERT was compared with the baseline, with per-paragraph scores saved. At default thresholds the transformer is more precise (0.578 vs 0.464) and flags fewer paragraphs (249 vs 345), with lower recall (0.545 vs 0.606); the **F1 difference at default thresholds is not significant** (bootstrap mean ΔF1 +0.033, 95% CI [−0.03, +0.09]). The ranking and equal-cost comparisons favour the transformer: the article-bootstrap mean differences are ΔAP +0.074 [+0.00, +0.14] and matched-budget Δrecall +0.068 [+0.01, +0.12], with observed matched-budget recalls 0.670 vs 0.606. At the default operating points, paired correctness also favours the transformer (McNemar 148 vs 84, p < 0.001). This **reverses** Working Paper I/II v1's "context buys precision, not recall": at equal cost, context buys recall too. Paired transitions show the two models miss *different* cases, not the same ones.
 
 **Multi-seed robustness:** the transformer was retrained across 5 random seeds (fixed split). AP = 0.605 ± 0.005; in **5/5 seeds** it beats the baseline on average precision, on recall at matched review budget (0.683 ± 0.009 vs 0.606), and on paired correctness (McNemar p ≤ 0.0001 each). The advantage is not a single-run fluke. Default-threshold recall is the most seed-sensitive quantity (0.49–0.62), which is why the threshold-independent and matched-cost measures carry the comparison.
 
@@ -47,6 +51,8 @@ On the same article-disjoint split, a fine-tuned DistilBERT was compared with th
 - `01_download_data.py` → `02_inspect_labels.py` → `03_baseline_detector.py` → `04_transformer_detector.py` — the original pipeline (official split).
 - `clean_rerun/` — the correction: `inspect_leakage.py` (quantifies the leakage), `run_baseline_clean.py` (article-disjoint split + baseline + bootstrap + matched precision), `quick_baselines.py` (alternative lexical baselines), `04_transformer_clean.py` (transformer on the clean split, saving scores), `compare_clean.py` (bootstrap CIs, McNemar, matched-budget comparison). Run these from the repository root (they read `data/`, created by `01_download_data.py`).
 - Working papers I and II, in PDF and Word; `*_v2_corrected.*` supersede the originals.
+- Working Paper III, contrastive pairs: `Working_Paper_III_Contrastive_Pairs_v2_corrected.*` and `Lucrarea_III_Perechi_Contrastive_RO_v2_corectata.*` supersede the originals (kept for history); likewise `Academia_Overview_Article_EN_v2_corrected.*`.
+- `Erratum_CoCoLoFa_Correction_Round_EN_RO.*` — the single correction round after the CoCoLoFa test; full list in `Corecturi_lucrari_dupa_CoCoLoFa.docx`.
 - `Marker_Dependence_FalseDilemma_CoCoLoFa_EN.*` (Romanian: `Dependenta_de_Marker_Falsa_Dilema_CoCoLoFa_RO.*`) — the pre-registered structural-sensitivity test of the false-dilemma detector on CoCoLoFa (verdict INCONCLUSIVE; detection 94% with an explicit either/or marker, 55% without). Pre-registration, sample manifest, predictions and report in `benchmark/`.
 - `requirements.txt` — pinned versions.
 - `dfa/` — **DFA component** (added 11 November 2026, the day the European Commission presented its Digital Fairness Act proposal). `30_dfa_classifier.py` names which DFA-relevant B2C practice (confirmshaming, false urgency/scarcity, trial auto-conversion, obstructed cancellation, drip pricing, undisclosed influencer ad, virtual-currency opacity, undisclosed variable rewards, no human contact, minor-targeted monetisation) a consumer-facing text performs, with abstention and the provision group of the proposal; backends `rules` (offline lexical baseline), `openai`, `ollama`; files without gold labels run in audit mode. `dfa_seed_items.csv` (dev) and `dfa_heldout_items.csv` (held-out, run once after `rules_freeze.sha256`) are author-built. Lexical rules: 24/24 on dev (in-sample, uninformative) and 0/13 on held-out — a keyword checker does not survive paraphrase. Note: `Nota_Componenta_DFA_RO_EN.docx`. Scope: the DFA is consumer law and does not cover political speech; a label is a screening signal, not a legal finding.
@@ -54,6 +60,8 @@ On the same article-disjoint split, a fine-tuned DistilBERT was compared with th
 ## Data
 
 English configuration of **PropXplain** (Qatar Computing Research Institute). Not re-hosted here; `01_download_data.py` reproduces it from source. PropXplain retains its own license.
+
+The external false-dilemma evaluations also use LOGIC (Jin et al., 2022) and CoCoLoFa (Yeh, Wan and Huang, 2024). The CoCoLoFa release used here states no redistribution licence, so the repository publishes identifiers, labels and predictions, not comment texts. Its reference labels record the fallacy each writer was assigned to produce, not an independent reader's judgement.
 
 ## Author & license
 
