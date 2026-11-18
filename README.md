@@ -14,10 +14,10 @@ ORCID: [0009-0000-2266-3356](https://orcid.org/0009-0000-2266-3356)
 
 ## Correction (Version 2, November 2026)
 
-Independent reproduction audits found two problems in the first versions, now corrected:
+Reproduction audits found two problems in the first versions, now corrected:
 
 1. **Data leakage in the official split.** The English PropXplain partitions together contain only ~250 news articles whose paragraphs are scattered across train/validation/test, so every test article also appears in training. The original evaluation was therefore not article-independent. The corrected analysis pools all rows, removes exact-text duplicates, and **re-splits by article** (no article spans two sets). On the article-disjoint test set the baseline's performance is essentially unchanged (propagandistic-class F1 0.525 vs. 0.506), so the leakage did not collapse the result — but because the test sets differ, this is robustness to the protocol change, not proof of no overestimation.
-2. **An over-stated error-analysis claim is retracted.** Version 1 claimed the lexical model "systematically misses" structural rather than overt manipulation. A blinded audit did not support this (overt cues were present in most false negatives; structural forms were not enriched; the "9/11" example contains overt loaded vocabulary). The claim is withdrawn and not replaced with a new one.
+2. **An over-stated error-analysis claim is retracted.** Version 1 claimed the lexical model "systematically misses" structural rather than overt manipulation. A blinded audit, coded by a single AI model and not human-validated, did not support this (overt cues were present in most false negatives; structural forms were not enriched; the "9/11" example contains overt loaded vocabulary). The claim is withdrawn and not replaced with a new one.
 
 The corrected paper is `Politomorphism_Defensive_Detection_WorkingPaper_v2_corrected.*`, which **supersedes** Version 1 (kept for history). Version 2 also adds bootstrap confidence intervals, a matched-precision analysis, a comparison across lexical baselines, and explicit construct-validity and ethical-scoping caveats.
 
