@@ -83,8 +83,17 @@ sample, prompt, marker or decision rule changed.
 
 ## Next step
 
-Not yet decided by the author (as of 2026-11-16). Until it is, H1–H3, DFA, the
-Romanian arm, the engine components and the book stay frozen, and the CoCoLoFa
-sample is not re-run or re-prompted. The two follow-up studies already named would
-each need their own pre-registration: independent human labels for the marker-free
-cell, and a multi-model run of the CoCoLoFa protocol.
+Decided by the author on 2026-11-18: the multi-model run of the CoCoLoFa protocol.
+Its pre-registration is frozen as version 10 in `prereg/`
+(`Explicit-Implicit_Gap_Across_Models_Pre-registration_v10_FROZEN.*`), with the SHA-256
+of every frozen element in `prereg/FREEZE_MANIFEST.txt`. Primary outcome: writer-equal
+hard-cell balanced accuracy; secondary: the writer-equal explicit–implicit gap G (EIADG)
+and S2–S10. Arms: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemma-4-31b-it, all on
+the Gemini API free tier with thinking at minimal; gpt-4o-mini is context only.
+Launcher `benchmark/33_cocolofa_multimodel_run.py`, analysis
+`benchmark/34_cocolofa_multimodel_analysis.py`. Re-analysed with equal weight per
+writer, the published gpt-4o-mini predictions give 0.556 (writer interval 0.464–0.652)
+and G = 0.534; the published comment-weighted results and verdict stand as published.
+The other follow-up, independent human labels for the marker-free cell, stays
+deferred (Appendix A of the pre-registration; its annotation manifest is drawn).
+H1–H3, DFA, the Romanian arm, the engine components and the book stay frozen.
