@@ -33,3 +33,6 @@ agent/repo_tmp/
 parlament-antropologic/cache/
 parlament-antropologic/rapoarte/
 parlament-antropologic/probe/
+
+# Multi-model study: raw model answers may quote comments; local only
+benchmark/mm_raw_local.jsonl

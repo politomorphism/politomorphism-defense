@@ -1,0 +1,51 @@
+FREEZE MANIFEST - pre-registration version 10, 18 November 2026
+The Explicit-Implicit Gap study: Hard-Cell Accuracy and the Explicit-Implicit Gap in Zero-Shot
+False-Dilemma Detection Across Three Language Models. Author: Șerban, G. F. (ORCID 0009-0000-2266-3356)
+
+Numbers refer to the rows of Section 3 of the pre-registration. SHA-256 of each file at freezing:
+
+fec4bd8027be0d86b73c957cd876c3faa60552d93c87109e062d69a3454073d9  prereg/Explicit-Implicit_Gap_Across_Models_Pre-registration_v10_FROZEN.docx
+    Pre-registration document (version 10)
+b7ce9488ece877f7b8352db464212c3a9e3e2cfa148919e3557bae626c098ff2  prereg/Explicit-Implicit_Gap_Across_Models_Pre-registration_v10_FROZEN.pdf
+    Pre-registration document, PDF rendering
+2acf07d53ae8c1965b403f21031110d28683eb6fa48660d7a7d8b4ff712c3e36  benchmark/28_cocolofa_sample.py
+    1 Corpus pins and sampling script (first study)
+1ecdd69fa3ff4121a51f63312a083e4bd003261f747475da1eeb0b7ae73e70c0  benchmark/26_logic_hard_cells.py
+    2 Marker regular expression
+e35b540ec55962eb9de92b9887bd56647f563944b31050163c8fad531b2b9975  benchmark/cocolofa_fd_sample_manifest.csv
+    4 Sample manifest (440 comments)
+6622d5ea28cbdbfbdacb389523d0d5bbbf9cf6cfea63d2f2fdf9140a214fb7e6  benchmark/23_logic_fd_eval.py
+    6-7 Prompt v2 and parser
+18f7d728a164dda147b07ec7245322b29162a7575da78c3ec1347c88826501d8  benchmark/cocolofa_fd_predictions.csv
+    8 M0 reference predictions
+eb5d610ba9cefa0b4cd95ce9e2076bd9fed64b23804b16e3cf3bc74b879f6dee  benchmark/33_cocolofa_multimodel_run.py
+    8-10 Launcher (models, configuration, run plan)
+51cbd8deedd019c9e893a5d69c22ad1e9669832ce9269818d324509c09f39fe4  requirements.txt
+    9 Pinned dependencies (google-genai 3.3.0)
+e84135e93be0b8ce329e2b5cfc5910f16c47fa2b3fa166de4bee5a0d5a8b5bc7  benchmark/34_cocolofa_multimodel_analysis.py
+    16 Frozen analysis script
+09fd78a325a69767d80d32a12e1a6d60197bdadac4999daf6df0ae857682a753  benchmark/mm_report_m0_test.txt
+    16 Analysis test output on M0
+108c29cf7f870524c644516f40f85e6d7158a14c11dd190bb7be205326136f4f  benchmark/32_design_analysis_writer_equal.py
+    17 Design analysis script (v4 onward)
+2a9bbf71865b162ea89382d0a983cd952b726252ab8f4f90221e9e846b2d64e3  benchmark/design_analysis_writer_equal.csv
+    17 Design analysis output
+407176dca68d5122b89c7bf5c061dc3eacd42725cf4df87d21e1365d1be8048c  benchmark/31_design_analysis_multimodel.py
+    17 Design analysis script of v3 (record)
+05c71aa9f0fc1bdd70c53d41272e490eb516a4e909d927f08decd8a82460ff1f  benchmark/contrastive_pairs_pilot.csv
+    Smoke-test items (author's pilot file)
+e7ab2e13d30cbed7fbe8341253c98e822b895e0233e56f28f40f6ccdb52716f9  benchmark/35_annotation_manifest.py
+    20 Deferred human stage: drawing script
+f827e480628eebb26776cedabe30f30535062c2ded63eea62d831193cb793138  benchmark/mm_annotation_manifest.csv
+    20 Deferred human stage: annotation manifest
+b9bd9df04c11eb3c9dcf74f744f4b5c597046f79c8ff48ce3b067bebe16ba986  prereg/rate_limits_2026-11-18.txt
+    Rate limits of the author's project
+bdf877ade6b52fcc0dbc90fca4e6b4c7f07f27e27e1d18ee20d117649d8ad62f  prereg/sources_checked_2026-11-18.txt
+    Provider documentation checked
+
+Launcher configuration fingerprint (printed by --check): 1485ea957d376f340b7f6e8fc4fb8c0170f74d4eed36df30bff42dc185815ea5
+Models: gemini-3.1-flash-lite (M1), gemini-3.5-flash-lite (M2), gemma-4-31b-it (M3); thinking_level minimal;
+max_output_tokens 1024; no sampling parameters sent; order seed 20261118; bootstrap seed 20261119.
+
+The commit that adds this file is the freeze commit. No model named above had been called on
+CoCoLoFa text before it (author's declaration, Section 5).

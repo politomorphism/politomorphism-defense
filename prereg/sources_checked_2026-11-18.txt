@@ -1,0 +1,22 @@
+Provider documentation checked on 18 November 2026 for pre-registration version 10
+
+Gemini 3 developer guide (thinking_level, temperature default 1.0):
+  https://ai.google.dev/gemini-api/docs/gemini-3
+What's new in Gemini 3.5 Flash (thinking-level table; 3.1 Flash-Lite minimal = default):
+  https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.5.md.txt
+Gemini 3.1 Flash-Lite model page (stable id gemini-3.1-flash-lite; knowledge cutoff January 2025):
+  https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite.md
+Gemini 3.5 Flash-Lite model card (based on 3.1 Flash-Lite; knowledge cutoff March 2026, some domains
+January 2025; published July 2026):
+  https://deepmind.google/models/model-cards/gemini-3-5-flash-lite/
+Gemini 3.5 Flash-Lite on Google Cloud (defaults to minimal thinking):
+  https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite
+Gemma on the Gemini API (ids gemma-4-31b-it, gemma-4-26b-a4b-it; thinking high = on, minimal = off):
+  https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api
+Gemma 4 31B IT model card as published with the weights (pre-training data cutoff January 2025),
+reproduced by NVIDIA:
+  https://docs.api.nvidia.com/nim/reference/google-gemma-4-31b-it
+Gemini API rate limits (limits per project; daily quota resets at midnight Pacific time):
+  https://ai.google.dev/gemini-api/docs/rate-limits
+gpt-4o-mini-2024-07-18 shutdown 14 January 2027 (secondary sources citing OpenAI's deprecations page):
+  https://sessionwatcher.com/news/openai-api-gpt-4o-gpt-4-1-shutdown-january-14-2027

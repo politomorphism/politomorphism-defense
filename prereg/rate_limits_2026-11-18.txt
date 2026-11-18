@@ -1,0 +1,15 @@
+Gemini API rate limits of the author's project, as shown on aistudio.google.com/rate-limit
+Copied by the author on 18 November 2026, 19:36 CET (text of the page, verbatim figures)
+
+Gemini API Rate Limit | Free tier | Project: Default Gemini Project | Time range: 28 days
+Banner: "You have reached a rate limit. Set up billing to increase your limits and unblock your work."
+Peak usage per model compared to its limit over the last 28 days:
+
+Model                   Category           RPM      TPM              RPD
+Gemini 3.8 Flash        Text-out models    3 / 5    10.16K / 250K    21 / 20
+Gemini 3.5 Flash Lite   Text-out models    4 / 15   16.57K / 250K    8 / 500
+Antigravity             Agents             0 / 60   0 / 100K         0 / 100
+
+Gemini 3.8 Flash is not part of the study; its usage comes from other work of the author.
+gemini-3.1-flash-lite and gemma-4-31b-it had not been used by the project and are not listed;
+their limits are recorded after the smoke test, before run 1.
